@@ -1,12 +1,15 @@
 #include "Ball.h"
+#include "BallThreadSystem.h"
 #include "Renderer.h"
 
-#include <SDL2/SDL.h>
+#include <SDL.h>
 
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <iomanip>
 #include <iostream>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -15,6 +18,11 @@ constexpr int WINDOW_WIDTH = 1280;
 constexpr int WINDOW_HEIGHT = 720;
 constexpr int INITIAL_BALL_COUNT = 12;
 constexpr float MAX_DELTA_TIME = 0.033F;
+
+enum class SimulationMode {
+    Serial,
+    Parallel
+};
 
 std::vector<Ball> createInitialBalls() {
     const std::array<BallColor, 4> colors {
@@ -36,12 +44,27 @@ std::vector<Ball> createInitialBalls() {
     return initialBalls;
 }
 
-bool processEvents(SDL_Window* window) {
+const char* modeName(SimulationMode mode) {
+    return mode == SimulationMode::Serial ? "secuencial" : "paralelo";
+}
+
+bool processEvents(SDL_Window* window, SimulationMode& mode) {
     SDL_Event event;
     while (SDL_PollEvent(&event) != 0) {
         if (event.type == SDL_QUIT ||
             (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_ESCAPE)) {
             return false;
+        }
+        if (event.type == SDL_KEYDOWN && event.key.repeat == 0) {
+            if (event.key.keysym.sym == SDLK_1) {
+                mode = SimulationMode::Serial;
+            } else if (event.key.keysym.sym == SDLK_2) {
+                mode = SimulationMode::Parallel;
+            } else if (event.key.keysym.sym == SDLK_SPACE) {
+                mode = mode == SimulationMode::Serial
+                    ? SimulationMode::Parallel
+                    : SimulationMode::Serial;
+            }
         }
         if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_SIZE_CHANGED) {
             resizeRenderer(event.window.data1, event.window.data2);
@@ -85,14 +108,17 @@ int main() {
 
     // Elementos de la simulación almacenados en memoria.
     std::vector<Ball> balls = createInitialBalls();
+    BallThreadSystem parallelSystem(balls);
+    SimulationMode simulationMode = SimulationMode::Serial;
 
     bool running = true;
     auto previousTime = std::chrono::steady_clock::now();
     auto fpsStart = previousTime;
     int frameCount = 0;
+    double accumulatedPhysicsMicroseconds = 0.0;
 
     while (running) {
-        running = processEvents(window);
+        running = processEvents(window, simulationMode);
 
         const auto currentTime = std::chrono::steady_clock::now();
         const float dt = std::min(
@@ -100,7 +126,17 @@ int main() {
         );
         previousTime = currentTime;
 
-        updateBallsSerial(balls, dt);
+        const auto physicsStart = std::chrono::steady_clock::now();
+        if (simulationMode == SimulationMode::Serial) {
+            updateBallsSerial(balls, dt);
+        } else {
+            parallelSystem.update(dt);
+        }
+        const auto physicsEnd = std::chrono::steady_clock::now();
+        accumulatedPhysicsMicroseconds +=
+            std::chrono::duration<double, std::micro>(physicsEnd - physicsStart).count();
+
+        // OpenGL permanece en el hilo principal y solo lee al terminar la fisica.
         renderScene(balls);
         SDL_GL_SwapWindow(window);
 
@@ -108,8 +144,19 @@ int main() {
         const float fpsElapsed = std::chrono::duration<float>(currentTime - fpsStart).count();
         if (fpsElapsed >= 1.0F) {
             const int fps = static_cast<int>(frameCount / fpsElapsed);
-            SDL_SetWindowTitle(window, ("Plinko 3D Paralelo | FPS: " + std::to_string(fps)).c_str());
+            const double averagePhysicsMicroseconds = accumulatedPhysicsMicroseconds / frameCount;
+            std::ostringstream title;
+            title << "Plinko 3D | " << modeName(simulationMode)
+                  << " | FPS: " << fps
+                  << " | fisica: " << std::fixed << std::setprecision(1)
+                  << averagePhysicsMicroseconds << " us"
+                  << " | hilos: "
+                  << (simulationMode == SimulationMode::Parallel
+                          ? parallelSystem.threadCount()
+                          : 1);
+            SDL_SetWindowTitle(window, title.str().c_str());
             frameCount = 0;
+            accumulatedPhysicsMicroseconds = 0.0;
             fpsStart = currentTime;
         }
     }
