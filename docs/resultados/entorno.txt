@@ -1,0 +1,11 @@
+=== Maquina ===
+Apple M1 Pro
+Nucleos logicos: 8  fisicos: 8
+Rendimiento/Eficiencia: 6/2
+RAM: 16 GB
+ProductName:		macOS
+ProductVersion:		26.5.1
+BuildVersion:		25F80
+Compilador: Apple clang version 17.0.0 (clang-1700.6.3.2)
+Fecha: 2026-08-30 00:10:51 CST
+
