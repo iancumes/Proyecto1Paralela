@@ -1,0 +1,222 @@
+// Anexo 1 - Diagrama de flujo del programa Plinko 3D Paralelo.
+// Genera con:  dot -Tpng docs/graficas/diagrama_flujo.dot -o docs/graficas/diagrama_flujo.png
+digraph PlinkoParalelo {
+    rankdir=TB;
+    bgcolor="white";
+    splines=polyline;
+    nodesep=0.30;
+    ranksep=0.34;
+    fontname="Helvetica";
+    node [fontname="Helvetica", fontsize=10, margin="0.14,0.09"];
+    edge [fontname="Helvetica", fontsize=9, color="#52514e", arrowsize=0.7];
+
+    // Formas: ovalo = inicio/fin, rectangulo = proceso, rombo = decision,
+    // paralelogramo = entrada/salida, rectangulo doble = seccion paralela.
+    node [shape=box, style="filled,rounded", fillcolor="#eef4fd", color="#2a78d6"];
+
+    inicio      [shape=oval, fillcolor="#2a78d6", fontcolor="white", color="#2a78d6", label="INICIO\nmain(argc, argv)"];
+    fin_ok      [shape=oval, fillcolor="#1baf7a", fontcolor="white", color="#1baf7a", label="FIN\ncodigo 0"];
+    // Terminales de error: uno por cada punto de salida, para no cruzar el
+    // diagrama entero con una sola arista.
+    node [shape=oval, style=filled, fillcolor="#e34948", fontcolor="white", color="#e34948"];
+    fin_e1 [label="FIN\ncodigo 1"];
+    fin_e2 [label="FIN\ncodigo 1"];
+    fin_e3 [label="FIN\ncodigo 1"];
+    fin_e4 [label="FIN\ncodigo 1"];
+    fin_e5 [label="FIN\ncodigo 1"];
+    node [shape=box, style="filled,rounded", fillcolor="#eef4fd", color="#2a78d6", fontcolor="black"];
+    fin_ayuda   [shape=oval, fillcolor="#1baf7a", fontcolor="white", color="#1baf7a", label="FIN\ncodigo 0"];
+    fin_bench   [shape=oval, fillcolor="#1baf7a", fontcolor="white", color="#1baf7a", label="FIN\ncodigo 0"];
+
+    // ---------------- Captura de argumentos ----------------
+    subgraph cluster_argumentos {
+        label="1. Captura de argumentos y programacion defensiva";
+        fontsize=11; fontcolor="#0b0b0b"; color="#c9d7ea"; style="rounded"; bgcolor="#f7fafe";
+
+        parse   [label="parseCommandLine()\nrecorre argv y reconoce cada opcion:\n-n  --pegs  --modifiers  --bins  --radius\n--gravity  --restitution  --substeps  --seed\n-w  -h  -m  -t  --benchmark  --screenshot"];
+        d_valor [shape=diamond, fillcolor="#fdf3e6", color="#eb6834",
+                 label="La opcion\nrecibio su valor?"];
+        e_valor [shape=parallelogram, fillcolor="#fdecea", color="#e34948",
+                 label="Mensaje: la opcion\nrequiere un valor"];
+        d_tipo  [shape=diamond, fillcolor="#fdf3e6", color="#eb6834",
+                 label="El valor es del\ntipo correcto?"];
+        e_tipo  [shape=parallelogram, fillcolor="#fdecea", color="#e34948",
+                 label="Mensaje: se esperaba\nun entero o decimal"];
+        d_conoc [shape=diamond, fillcolor="#fdf3e6", color="#eb6834",
+                 label="Argumento\nreconocido?"];
+        e_conoc [shape=parallelogram, fillcolor="#fdecea", color="#e34948",
+                 label="Mensaje: argumento\nno reconocido"];
+        d_help  [shape=diamond, fillcolor="#fdf3e6", color="#eb6834", label="--help ?"];
+        s_help  [shape=parallelogram, fillcolor="#eafaf3", color="#1baf7a",
+                 label="Imprimir usageText():\nopciones y controles"];
+    }
+
+    // ---------------- Solicitud de datos ----------------
+    subgraph cluster_entrada {
+        label="2. Solicitud de ingreso de datos";
+        fontsize=11; fontcolor="#0b0b0b"; color="#c9d7ea"; style="rounded"; bgcolor="#f7fafe";
+
+        d_n     [shape=diamond, fillcolor="#fdf3e6", color="#eb6834",
+                 label="Se indico N\ncon -n ?"];
+        d_tty   [shape=diamond, fillcolor="#fdf3e6", color="#eb6834",
+                 label="La entrada estandar\nes interactiva?"];
+        pedir   [shape=parallelogram, fillcolor="#fff8e6", color="#eda100",
+                 label="promptForMissingValues()\nSolicitar N por consola\n(Enter conserva el valor por omision)"];
+        d_ok_n  [shape=diamond, fillcolor="#fdf3e6", color="#eb6834",
+                 label="N es entero\nentre 1 y 200000?"];
+        reintento [label="Reintentar\n(hasta 3 veces)"];
+        omision [label="Usar valor por omision\nN = 600"];
+    }
+
+    // ---------------- Validacion ----------------
+    subgraph cluster_validacion {
+        label="3. Validacion de rangos (validateConfig)";
+        fontsize=11; fontcolor="#0b0b0b"; color="#c9d7ea"; style="rounded"; bgcolor="#f7fafe";
+
+        validar [label="Comprobar:\n1 <= N <= 200000\nlienzo >= 640 x 480\ngravedad < 0\n0 <= restitucion <= 1\n1 <= sub-pasos <= 16\n0 <= hilos <= 512\nrepeticiones del banco >= 10"];
+        d_val   [shape=diamond, fillcolor="#fdf3e6", color="#eb6834",
+                 label="Todos los valores\nen rango?"];
+        e_val   [shape=parallelogram, fillcolor="#fdecea", color="#e34948",
+                 label="Imprimir el motivo\ny el texto de ayuda"];
+    }
+
+    // ---------------- Banco de pruebas ----------------
+    subgraph cluster_banco {
+        label="4. Modo banco de pruebas (sin ventana)";
+        fontsize=11; fontcolor="#0b0b0b"; color="#c9d7ea"; style="rounded"; bgcolor="#f7fafe";
+
+        d_bench [shape=diamond, fillcolor="#fdf3e6", color="#eb6834", label="--benchmark ?"];
+        bench   [label="runBenchmark()\npara cada N, para cada modo,\npara cada cantidad de hilos:\n3 pasos de calentamiento y\n12 repeticiones cronometradas"];
+        bench_calc [label="Calcular promedio, minimo, maximo,\ndesviacion estandar, speedup y eficiencia"];
+        bench_out  [shape=parallelogram, fillcolor="#eafaf3", color="#1baf7a",
+                    label="Escribir benchmark.csv y\nbenchmark_muestras.csv\ne imprimir la tabla por consola"];
+    }
+
+    // ---------------- Inicializacion grafica ----------------
+    subgraph cluster_init {
+        label="5. Inicializacion de la ventana y la escena";
+        fontsize=11; fontcolor="#0b0b0b"; color="#c9d7ea"; style="rounded"; bgcolor="#f7fafe";
+
+        sdl     [label="SDL_Init()\nSDL_CreateWindow()\nSDL_GL_CreateContext()"];
+        d_sdl   [shape=diamond, fillcolor="#fdf3e6", color="#eb6834",
+                 label="Se creo ventana\ny contexto?"];
+        e_sdl   [shape=parallelogram, fillcolor="#fdecea", color="#e34948",
+                 label="Imprimir SDL_GetError()\ny liberar lo ya creado"];
+        render_init [label="initializeRenderer()\nGenerar texturas de esfera y halo"];
+        escena  [label="Simulation(params)\nCrear M clavijas oscilantes,\nK zonas modificadoras y\nN pelotas con semilla y color propios"];
+    }
+
+    // ---------------- Ciclo principal ----------------
+    subgraph cluster_ciclo {
+        label="6. Ciclo principal (un cuadro por vuelta)";
+        fontsize=11; fontcolor="#0b0b0b"; color="#c9d7ea"; style="rounded"; bgcolor="#f7fafe";
+
+        eventos [label="processEvents()\n0/1/2/3 cambia de modo, ESPACIO rota,\n+/- ajusta hilos, R reinicia, ESC sale"];
+        dt      [label="Calcular delta time\ny acotarlo a 1/30 s\n(evita atravesar paredes)"];
+        d_modo  [shape=diamond, fillcolor="#fdf3e6", color="#eb6834",
+                 label="Modo de\nejecucion?"];
+    }
+
+    // ---------------- Secciones paralelas ----------------
+    subgraph cluster_paralelo {
+        label="7. Secciones paralelas y mecanismos de sincronia";
+        fontsize=11; fontcolor="#0b0b0b"; color="#f0c9a8"; style="rounded"; bgcolor="#fff9f4";
+
+        node [shape=box3d, fillcolor="#fdf3e6", color="#eb6834"];
+
+        seq     [shape=box, style="filled,rounded", fillcolor="#eef4fd", color="#2a78d6",
+                 label="stepSequential()\nCiclo simple sobre las N pelotas\n(referencia de correccion y de tiempo)"];
+        hilos   [label="stepStdThreads()\nUn std::thread persistente por pelota\nSINCRONIA: barrera de dos fases con\nmutex + condition_variable + contador\nde workers pendientes"];
+        est     [label="stepOpenMpStatic()\n#pragma omp parallel for schedule(static)\nSINCRONIA: #pragma omp atomic en los\ncontadores de casilla y barrera implicita\nal cerrar el omp for"];
+        aju     [label="stepOpenMpTuned()\n#pragma omp parallel (una sola region)\n#pragma omp for schedule(guided)\nSINCRONIA: contadores privados por hilo\nfusionados con #pragma omp critical,\n#pragma omp barrier + #pragma omp single\npara la metrica de desbalance"];
+
+        kernel  [shape=box, style="filled,rounded", fillcolor="#eafaf3", color="#1baf7a",
+                 label="advanceBall() - nucleo comun a los cuatro modos\nFuncion pura sobre el buffer de LECTURA:\n1. gravedad y zonas modificadoras\n2. colisiones pelota-pelota  O(N)\n3. integracion semi-implicita de Euler\n4. colisiones contra las M clavijas\n5. paredes, techo y profundidad\n6. casilla alcanzada y reaparicion"];
+        buffers [shape=box, style="filled,rounded", fillcolor="#eafaf3", color="#1baf7a",
+                 label="Intercambio del doble buffer\ncurrent_ <-> next_\nUn unico escritor por indice:\nsin condiciones de carrera"];
+    }
+
+    // ---------------- Despliegue ----------------
+    subgraph cluster_salida {
+        label="8. Despliegue de resultados";
+        fontsize=11; fontcolor="#0b0b0b"; color="#c9d7ea"; style="rounded"; bgcolor="#f7fafe";
+
+        dibujar [shape=parallelogram, fillcolor="#eafaf3", color="#1baf7a",
+                 label="renderScene()\nTablero, clavijas, zonas, pelotas e\nhistograma de casillas"];
+        hud     [shape=parallelogram, fillcolor="#eafaf3", color="#1baf7a",
+                 label="HUD sobre la escena:\nFPS, modo, N, hilos, ms de fisica,\nms por cuadro, speedup y recicladas"];
+        swap    [label="SDL_GL_SwapWindow()\nSDL_SetWindowTitle() con las mismas cifras"];
+        d_sigue [shape=diamond, fillcolor="#fdf3e6", color="#eb6834",
+                 label="Continuar\nejecutando?"];
+    }
+
+    // ---------------- Liberacion ----------------
+    liberar [label="shutdownRenderer() libera texturas\nEl destructor de Simulation detiene y\nune los hilos persistentes\nSDL_GL_DeleteContext / SDL_DestroyWindow / SDL_Quit"];
+
+    // ---------------- Aristas ----------------
+    inicio -> parse;
+    parse -> d_valor;
+    d_valor -> e_valor [label="no"];
+    e_valor -> fin_e1;
+    d_valor -> d_tipo [label="si"];
+    d_tipo -> e_tipo [label="no"];
+    e_tipo -> fin_e2;
+    d_tipo -> d_conoc [label="si"];
+    d_conoc -> e_conoc [label="no"];
+    e_conoc -> fin_e3;
+    d_conoc -> d_help [label="si"];
+    d_help -> s_help [label="si"];
+    s_help -> fin_ayuda;
+    d_help -> d_n [label="no"];
+
+    d_n -> validar [label="si"];
+    d_n -> d_tty [label="no"];
+    d_tty -> omision [label="no"];
+    d_tty -> pedir [label="si"];
+    pedir -> d_ok_n;
+    d_ok_n -> validar [label="si"];
+    d_ok_n -> reintento [label="no"];
+    reintento -> pedir [label="quedan\nintentos"];
+    reintento -> omision [label="se agotaron"];
+    omision -> validar;
+
+    validar -> d_val;
+    d_val -> e_val [label="no"];
+    e_val -> fin_e4;
+    d_val -> d_bench [label="si"];
+
+    d_bench -> bench [label="si"];
+    bench -> bench_calc;
+    bench_calc -> bench_out;
+    bench_out -> fin_bench;
+
+    d_bench -> sdl [label="no"];
+    sdl -> d_sdl;
+    d_sdl -> e_sdl [label="no"];
+    e_sdl -> fin_e5;
+    d_sdl -> render_init [label="si"];
+    render_init -> escena;
+    escena -> eventos;
+
+    eventos -> dt;
+    dt -> d_modo;
+    d_modo -> seq   [label="seq"];
+    d_modo -> hilos [label="threads"];
+    d_modo -> est   [label="omp-static"];
+    d_modo -> aju   [label="omp-tuned"];
+
+    seq -> kernel;
+    hilos -> kernel;
+    est -> kernel;
+    aju -> kernel;
+    kernel -> buffers;
+
+    buffers -> dibujar;
+    dibujar -> hud;
+    hud -> swap;
+    swap -> d_sigue;
+    d_sigue -> eventos [label="si  (siguiente cuadro)"];
+    d_sigue -> liberar [label="no  (ESC o cerrar)"];
+    liberar -> fin_ok;
+
+}

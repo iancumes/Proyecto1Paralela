@@ -1,0 +1,77 @@
+// Anexo 1, parte 2 de 2: ventana, ciclo principal, secciones paralelas y salida.
+digraph PlinkoParte2 {
+    rankdir=TB; bgcolor="white"; splines=polyline;
+    nodesep=0.30; ranksep=0.36; fontname="Helvetica";
+    node [fontname="Helvetica", fontsize=11, margin="0.15,0.10"];
+    edge [fontname="Helvetica", fontsize=10, color="#52514e", arrowsize=0.75];
+    node [shape=box, style="filled,rounded", fillcolor="#eef4fd", color="#2a78d6"];
+
+    conector [shape=circle, fillcolor="#eda100", color="#eda100", width=0.6, fixedsize=true, label="A"];
+    fin_ok   [shape=oval, fillcolor="#1baf7a", fontcolor="white", label="FIN\ncodigo 0"];
+    fin_e5   [shape=oval, fillcolor="#e34948", fontcolor="white", color="#e34948", label="FIN\ncodigo 1"];
+
+    subgraph cluster_init {
+        label="5. Inicializacion de la ventana y de la escena";
+        fontsize=12; color="#c9d7ea"; style="rounded"; bgcolor="#f7fafe";
+        sdl   [label="SDL_Init(VIDEO | TIMER)\nSDL_CreateWindow()  con el lienzo pedido\nSDL_GL_CreateContext()  OpenGL 2.1"];
+        d_sdl [shape=diamond, fillcolor="#fdf3e6", color="#eb6834", label="Se creo la ventana\ny el contexto?"];
+        e_sdl [shape=parallelogram, fillcolor="#fdecea", color="#e34948", label="Imprimir SDL_GetError()\ny liberar lo ya creado"];
+        render_init [label="initializeRenderer()\nGenerar las texturas procedurales\nde esfera y de halo"];
+        escena [label="Simulation(params)\nCrear M clavijas oscilantes, K zonas\nmodificadoras y N pelotas, cada una con\nsemilla y color pseudoaleatorios propios"];
+    }
+
+    subgraph cluster_ciclo {
+        label="6. Ciclo principal: una vuelta por cuadro";
+        fontsize=12; color="#c9d7ea"; style="rounded"; bgcolor="#f7fafe";
+        eventos [label="processEvents()\n0/1/2/3 elige modo, ESPACIO rota entre modos,\n+/- ajusta los hilos, R reinicia la escena, ESC sale"];
+        dt      [label="Calcular el delta time y acotarlo a 1/30 s\n(un salto grande haria atravesar las paredes)"];
+        d_modo  [shape=diamond, fillcolor="#fdf3e6", color="#eb6834", label="Modo de\nejecucion activo?"];
+    }
+
+    subgraph cluster_paralelo {
+        label="7. Secciones paralelas y mecanismos de sincronia";
+        fontsize=12; color="#f0c9a8"; style="rounded"; bgcolor="#fff9f4";
+        seq [shape=box, style="filled,rounded", fillcolor="#eef4fd", color="#2a78d6",
+             label="stepSequential()\nCiclo simple sobre las N pelotas.\nEs la referencia de correccion\ny el denominador del speedup"];
+        hilos [shape=box3d, fillcolor="#fdf3e6", color="#eb6834",
+               label="stepStdThreads()\nUn std::thread persistente por pelota\nSINCRONIA: barrera de dos fases con\nmutex, dos condition_variable y un\ncontador de workers pendientes"];
+        est [shape=box3d, fillcolor="#fdf3e6", color="#eb6834",
+             label="stepOpenMpStatic()\n#pragma omp parallel for schedule(static)\nSINCRONIA: #pragma omp atomic sobre los\ncontadores de casilla y barrera implicita\nal cerrar el omp for"];
+        aju [shape=box3d, fillcolor="#fdf3e6", color="#eb6834",
+             label="stepOpenMpTuned()\n#pragma omp parallel (una sola region)\n#pragma omp for schedule(guided)\nSINCRONIA: contadores privados por hilo\nfusionados con #pragma omp critical;\n#pragma omp barrier + #pragma omp single\npara la metrica de desbalance de carga"];
+        kernel [shape=box, style="filled,rounded", fillcolor="#eafaf3", color="#1baf7a",
+                label="advanceBall() - nucleo comun a los cuatro modos\nFuncion pura que solo lee el buffer anterior:\n1. gravedad y zonas modificadoras   O(K)\n2. colisiones pelota-pelota   O(N)\n3. integracion semi-implicita de Euler\n4. colisiones contra las clavijas   O(M)\n5. paredes, techo y limites de profundidad\n6. casilla alcanzada y reaparicion arriba"];
+        buffers [shape=box, style="filled,rounded", fillcolor="#eafaf3", color="#1baf7a",
+                 label="Intercambio del doble buffer:  current_ <-> next_\nUn unico escritor por indice, de modo que no\nexiste condicion de carrera por construccion"];
+    }
+
+    subgraph cluster_salida {
+        label="8. Despliegue de resultados";
+        fontsize=12; color="#c9d7ea"; style="rounded"; bgcolor="#f7fafe";
+        dibujar [shape=parallelogram, fillcolor="#eafaf3", color="#1baf7a",
+                 label="renderScene()\nTablero en 3D, clavijas, zonas modificadoras,\npelotas e histograma de casillas"];
+        hud [shape=parallelogram, fillcolor="#eafaf3", color="#1baf7a",
+             label="HUD dibujado sobre la escena:\nFPS, modo, N, hilos, ms de fisica,\nms por cuadro, speedup y recicladas"];
+        swap [label="SDL_GL_SwapWindow()\nSDL_SetWindowTitle() con las mismas cifras"];
+        d_sigue [shape=diamond, fillcolor="#fdf3e6", color="#eb6834", label="Continuar\nejecutando?"];
+    }
+
+    liberar [label="shutdownRenderer() libera las texturas de OpenGL\nEl destructor de Simulation detiene y une los hilos persistentes\nSDL_GL_DeleteContext() / SDL_DestroyWindow() / SDL_Quit()"];
+
+    conector -> sdl;
+    sdl -> d_sdl;
+    d_sdl -> e_sdl [label="no"];  e_sdl -> fin_e5;
+    d_sdl -> render_init [label="si"];
+    render_init -> escena; escena -> eventos;
+    eventos -> dt; dt -> d_modo;
+    d_modo -> seq [label="seq"];
+    d_modo -> hilos [label="threads"];
+    d_modo -> est [label="omp-static"];
+    d_modo -> aju [label="omp-tuned"];
+    seq -> kernel; hilos -> kernel; est -> kernel; aju -> kernel;
+    kernel -> buffers; buffers -> dibujar;
+    dibujar -> hud; hud -> swap; swap -> d_sigue;
+    d_sigue -> eventos [label="si  (siguiente cuadro)"];
+    d_sigue -> liberar [label="no  (ESC o cerrar la ventana)"];
+    liberar -> fin_ok;
+}
