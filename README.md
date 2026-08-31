@@ -16,7 +16,7 @@ corre.
 > Valle de Guatemala, Semestre 2, 2026.
 > Ian Cumes (23236) · Javier Valladares (23045) · Nery Molina (23218)
 
-![Plinko 3D Paralelo en ejecución](docs/capturas/piramide_frontal.png)
+![Plinko 3D Paralelo a pantalla completa](docs/capturas/piramide_frontal.png)
 
 Con menos pelotas se aprecia la estructura de la pirámide:
 
@@ -33,12 +33,12 @@ solo hilo da 1.00 en las seis cargas (con el promedio se dispersaba entre 0.90 y
 
 | N | Secuencial (ms/paso) | `std::thread` | OMP estático 8h | OMP ajustado 8h | Mejor speedup | Eficiencia |
 |---|---|---|---|---|---|---|
-| 250 | 0.411 | 0.26x | 1.56x | 1.31x | **2.25x** (4 h) | 0.56 |
-| 500 | 1.082 | 0.25x | 2.54x | 2.35x | **3.02x** (4 h) | 0.76 |
-| 1000 | 3.117 | 0.24x | 3.47x | 3.98x | **4.31x** (6 h) | 0.72 |
-| 2000 | 10.095 | no viable | 3.76x | 5.08x | **5.08x** (8 h) | 0.64 |
-| 4000 | 36.450 | no viable | 4.16x | 5.15x | **5.15x** (8 h) | 0.64 |
-| 8000 | 133.428 | no viable | 4.48x | 5.07x | **5.07x** (8 h) | 0.63 |
+| 250 | 0.407 | 0.28x | 1.53x | 1.08x | **2.48x** (4 h) | 0.62 |
+| 500 | 1.053 | 0.25x | 2.38x | 2.36x | **3.06x** (4 h) | 0.77 |
+| 1000 | 3.106 | 0.23x | 3.39x | 3.16x | **4.08x** (6 h) | 0.68 |
+| 2000 | 10.301 | no viable | 3.68x | 4.15x | **4.46x** (6 h) | 0.74 |
+| 4000 | 36.682 | no viable | 3.48x | 4.44x | **4.44x** (8 h) | 0.56 |
+| 8000 | 136.021 | no viable | 4.26x | 4.74x | **4.74x** (8 h) | 0.59 |
 
 Con la configuración por omisión (N = 3 000) el cambio de modo se ve de
 inmediato en el HUD:
@@ -47,7 +47,7 @@ inmediato en el HUD:
 |---|---|---|
 | Secuencial | 42 (ámbar) | 22.1 ms |
 | OpenMP estático, 8 hilos | 140 (verde) | 5.3 ms |
-| OpenMP ajustado, 8 hilos | 145 (verde) | 4.9 ms |
+| OpenMP ajustado, 8 hilos | 153 (verde) | 4.9 ms |
 
 Tres cosas que vale la pena señalar:
 
@@ -55,11 +55,13 @@ Tres cosas que vale la pena señalar:
   veces *más lenta* que la secuencial, y por encima de 1 024 pelotas el sistema
   operativo ya no permite crearla. El costo de despertar y dormir N hilos crece
   con N mientras el trabajo por hilo se mantiene constante.
-- **`schedule(guided)` no siempre gana.** Con cuatro hilos o menos el reparto
-  estático es igual o mejor en las seis cargas, porque no hay desbalance que
-  corregir. La ventaja de la versión ajustada aparece con ocho hilos y N ≥ 1 000,
-  donde llega al 35 %: ahí entran al equipo los dos núcleos de eficiencia y el
-  reparto estático se desbalancea.
+- **`schedule(guided)` no siempre gana.** Con dos hilos las dos versiones son
+  indistinguibles (0.03x de diferencia). Con cargas pequeñas el reparto estático
+  gana en todas las cantidades de hilos, porque el costo de que los hilos vuelvan
+  a pedir tarea no se amortiza. La ventaja de la versión ajustada aparece cuando
+  coinciden carga alta y seis u ocho hilos, y llega al 28 %: ahí entran al equipo
+  los dos núcleos de eficiencia y el reparto estático se desbalancea. No existe
+  una política de reparto que gane siempre.
 - **Paralelizar solo rinde si el problema es grande.** Con N = 250 la sobrecarga
   de la región paralela se come la ganancia; a partir de N ≈ 1 000 la eficiencia
   crece de forma sostenida.

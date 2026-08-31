@@ -199,10 +199,12 @@ int main(int argc, char** argv) {
     SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 1);
     SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 4);
 
-    // La captura de pantalla necesita un lienzo de tamano conocido, asi que en
-    // ese modo se fuerza la ventana aunque la configuracion pida pantalla
-    // completa.
-    const bool startFullscreen = config.fullscreen && config.screenshotPath.empty();
+    // La captura respeta el modo configurado: el tamano real del lienzo se
+    // consulta con SDL_GL_GetDrawableSize en cualquiera de los dos casos, asi
+    // que una captura a pantalla completa muestra exactamente lo que ve el
+    // usuario. Para capturas reproducibles de la documentacion se pasa
+    // --windowed junto con -w y -h.
+    const bool startFullscreen = config.fullscreen;
     Uint32 windowFlags = SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI;
     if (startFullscreen) {
         // FULLSCREEN_DESKTOP conserva la resolucion del escritorio: es

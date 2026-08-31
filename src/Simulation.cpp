@@ -66,7 +66,7 @@ void respawnAtTop(Ball& ball, const SimulationParams& params) {
     // punto fijo: si todas nacen a la misma altura se amontonan y forman una
     // columna atascada sobre el vertice.
     ball.position.y = params.ceilingY() - ball.radius -
-                      nextRandomInRange(ball.seed, 0.0F, params.boardHeight * 0.26F);
+                      nextRandomInRange(ball.seed, 0.0F, params.boardHeight * 0.14F);
     ball.velocity.x = nextRandomInRange(ball.seed, -0.5F, 0.5F);
     ball.velocity.y = nextRandomInRange(ball.seed, -1.2F, -0.2F);
     ball.velocity.z = nextRandomInRange(ball.seed, -0.5F, 0.5F);
@@ -315,8 +315,8 @@ void Simulation::buildPegs(std::uint32_t& seedState) {
     const float pegRadius = params_.ballRadius * PEG_RADIUS_FACTOR;
     // El vertice queda por debajo del techo, para dejar espacio de caida, y la
     // base por encima del piso, para dejar espacio a los sectores contadores.
-    const float topY = params_.ceilingY() - params_.boardHeight * 0.15F;
-    const float bottomY = params_.floorY() + params_.boardHeight * 0.15F;
+    const float topY = params_.ceilingY() - params_.boardHeight * 0.18F;
+    const float bottomY = params_.floorY() + params_.boardHeight * 0.10F;
     const float maxRingRadius = params_.pyramidRadius();
 
     pegs_.reserve(static_cast<std::size_t>(levels) * static_cast<std::size_t>(baseRing));

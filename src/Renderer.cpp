@@ -15,7 +15,17 @@ namespace {
 constexpr float PI = 3.14159265358979323846F;
 constexpr int SPRITE_TEXTURE_SIZE = 64;   // Lado de la textura procedural.
 constexpr float FIELD_OF_VIEW = 45.0F;    // Campo de vision vertical en grados.
-constexpr float FIT_MARGIN = 1.03F;       // Holgura alrededor del contenido.
+constexpr float FIT_MARGIN = 1.02F;       // Holgura alrededor del contenido.
+// Acercamiento deliberado. El solver de arriba encuadra el cilindro entero, pero
+// el punto que obliga a alejar la camara es el borde cercano de la corona de
+// sectores, que al inclinar la vista queda mucho mas proximo que el centro.
+// Respetarlo al pie de la letra desperdiciaba casi una cuarta parte del ancho
+// del lienzo en franjas negras, que es justo lo que no se quiere en un protector
+// de pantalla. Con este factor la escena llena el ancho y solo se recorta el
+// borde mas cercano, lo que ademas hace que la arena parezca continuar mas alla
+// de la pantalla. El valor se ajusto midiendo los pixeles de capturas reales a
+// pantalla completa, no a ojo.
+constexpr float FILL_ZOOM = 0.86F;
 
 GLuint g_sphereTexture = 0;  // Textura de esfera preiluminada (pelotas).
 GLuint g_pegTexture = 0;     // Esfera con reborde oscuro, exclusiva de las clavijas.
@@ -266,7 +276,7 @@ float cameraDistanceFor(const SimulationParams& params, float aspect,
         }
     }
     (void)yawDegrees;
-    return distancia;
+    return distancia * FILL_ZOOM;
 }
 
 // Dibuja el piso de la escena como un disco oscuro con anillos concentricos.

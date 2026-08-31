@@ -925,10 +925,10 @@ def seccion_resultados():
             f"que tarda {1 / hilo1000['speedup']:.1f} veces mas. Segundo, ambas versiones de "
             "OpenMP aceleran el programa en todos los tamanos probados, con un maximo de "
             f"{MEJOR['speedup']:.2f}x. Tercero, cual de las dos versiones de OpenMP conviene "
-            "depende del punto de operacion: hasta cuatro hilos son equivalentes, y la ventaja "
-            "clara de la ajustada aparece con ocho hilos y carga alta "
-            f"({AJU8_MAX['speedup']:.2f}x contra {EST8_MAX['speedup']:.2f}x con N = 8&nbsp;000). "
-            "La seccion 8.2 desglosa el cuadro completo."),
+            "depende sobre todo de la carga: con N pequeno el reparto estatico es mejor, y la "
+            "ajustada solo se impone cuando hay trabajo suficiente y varios hilos "
+            f"({AJU8_MAX['speedup']:.2f}x contra {EST8_MAX['speedup']:.2f}x con ocho hilos y "
+            "N = 8&nbsp;000). La seccion 8.2 desglosa el cuadro celda a celda."),
     ]
 
     contenido += figura(os.path.join(GRAFICAS, "fig1_speedup.png"),
@@ -1049,6 +1049,58 @@ def seccion_resultados():
     return contenido
 
 
+def _comparacion_estatico_ajustado():
+    """Genera las vinetas de la comparacion estatico/ajustado desde los datos.
+
+    Se calcula en lugar de escribirse a mano: cada vez que se repiten las
+    mediciones el texto se regenera solo y no puede quedar desfasado.
+    """
+    hilos_lista = sorted({f["hilos"] for f in RESUMEN if f["modo"] == "openmp-static"})
+    salida = []
+    for hilos in hilos_lista:
+        if hilos == 1:
+            continue
+        gana_ajustado, gana_estatico, diferencia_maxima = [], [], 0.0
+        for n in VALORES_N:
+            estatico = buscar("openmp-static", n, hilos)
+            ajustado = buscar("openmp-tuned", n, hilos)
+            if estatico is None or ajustado is None:
+                continue
+            diferencia_maxima = max(diferencia_maxima,
+                                    abs(estatico["speedup"] - ajustado["speedup"]))
+            (gana_ajustado if ajustado["speedup"] > estatico["speedup"] else gana_estatico).append(n)
+
+        if diferencia_maxima < 0.10:
+            detalle = ("las dos versiones son indistinguibles: la mayor diferencia en las seis "
+                       f"cargas es de {diferencia_maxima:.2f}x, dentro del ruido de medicion")
+        elif not gana_ajustado:
+            detalle = "la version estatica gana en las seis cargas"
+        elif not gana_estatico:
+            detalle = "la version ajustada gana en las seis cargas"
+        else:
+            lista_ajustado = ", ".join(f"{n:,}".replace(",", "&nbsp;") for n in gana_ajustado)
+            detalle = (f"la ajustada gana con N = {lista_ajustado} y la estatica en el resto")
+        salida.append(Paragraph(
+            f"•&nbsp;&nbsp;<b>Con {hilos} hilos</b>, {detalle}.", E["lista"]))
+
+    # Mayor ventaja del reparto guiado en todo el barrido.
+    mejor_ventaja, donde = 1.0, None
+    for n in VALORES_N:
+        for hilos in hilos_lista:
+            estatico = buscar("openmp-static", n, hilos)
+            ajustado = buscar("openmp-tuned", n, hilos)
+            if estatico and ajustado and estatico["speedup"] > 0:
+                razon = ajustado["speedup"] / estatico["speedup"]
+                if razon > mejor_ventaja:
+                    mejor_ventaja, donde = razon, (n, hilos)
+    if donde is not None:
+        salida.append(Paragraph(
+            f"•&nbsp;&nbsp;La mayor ventaja del reparto guiado en todo el barrido es del "
+            f"<b>{100 * (mejor_ventaja - 1):.0f}&nbsp;%</b>, con N = "
+            f"{donde[0]:,}".replace(",", "&nbsp;") + f" y {donde[1]} hilos.", E["lista"]))
+    return salida
+
+
 def seccion_analisis():
     hilo250 = buscar("std::thread", 250)
     hilo1000 = buscar("std::thread", 1000)
@@ -1107,27 +1159,10 @@ def seccion_analisis():
             f"{buscar('openmp-tuned', 8000, 4)['ef']:.2f}): agregar dos nucleos que rinden una "
             "fraccion de los otros seis nunca podra dar eficiencia 1."),
         parrafo(
-            "Ahora bien, el reparto guiado no es gratis, y conviene ser preciso sobre cuando "
-            "conviene, porque el resultado no es uniforme. Comparando las dos versiones celda a "
-            "celda:"),
-        *vinetas([
-            "<b>Con dos hilos</b> son indistinguibles: las diferencias no pasan de 0.10x, dentro "
-            "del ruido de medicion.",
-            "<b>Con cuatro hilos</b> la estatica es igual o ligeramente mejor en las seis cargas. "
-            "Tiene sentido: cuatro hilos caben de sobra en los seis nucleos rapidos, no hay "
-            "desbalance que corregir, y lo unico que aporta el reparto guiado es su costo de "
-            "planificacion.",
-            "<b>Con ocho hilos</b>, que es cuando los dos nucleos lentos entran al equipo, la "
-            "ajustada gana en las cuatro cargas de N mayor o igual a 1&nbsp;000, con una ventaja "
-            f"de hasta el "
-            f"{100 * (buscar('openmp-tuned', 2000, 8)['speedup'] / buscar('openmp-static', 2000, 8)['speedup'] - 1):.0f}"
-            "&nbsp;%.",
-            "<b>Con seis hilos</b> el resultado es mixto: la ajustada gana en el rango medio "
-            "(N entre 1&nbsp;000 y 4&nbsp;000) y la estatica en los extremos.",
-            "<b>Con N pequeno</b> (250 y 500) la estatica gana con cuatro, seis y ocho hilos: "
-            "cada bloque de trabajo es tan corto que pedir tarea de nuevo cuesta mas que lo que "
-            "se gana nivelando.",
-        ]),
+            "Ahora bien, el reparto guiado no es gratis. La comparacion celda a celda entre las "
+            "dos versiones de OpenMP, que se deriva directamente de las mediciones, es la "
+            "siguiente:"),
+        *_comparacion_estatico_ajustado(),
         parrafo(
             "La conclusion practica no es que una version sea mejor que la otra, sino que "
             "<font face='Courier'>schedule(guided)</font> es un seguro contra la heterogeneidad: "
@@ -1165,11 +1200,11 @@ def seccion_analisis():
             "<b>Region paralela unica.</b> Ahorra la creacion de un equipo de hilos por sub-paso. "
             "Con dos sub-pasos por cuadro el ahorro es real pero modesto, y solo se nota con N "
             "pequeno, donde la sobrecarga pesa.",
-            "<b>Reparto guiado.</b> Es la mejora que produjo casi toda la ganancia medible, pero "
-            "unicamente con ocho hilos y carga alta, que es el caso en el que dos nucleos lentos "
-            "se suman al equipo. Con cuatro hilos las dos versiones empatan, y con seis la "
-            "estatica es incluso mejor, porque ahi no hay desbalance que corregir y el reparto "
-            "guiado solo agrega costo de planificacion.",
+            "<b>Reparto guiado.</b> Es la mejora que produjo la ganancia medible, pero solo en "
+            "el extremo de carga alta con seis u ocho hilos, que es donde los dos nucleos lentos "
+            "desbalancean el reparto estatico. Con cargas pequenas es contraproducente: el costo "
+            "de que los hilos vuelvan a pedir tarea no se amortiza y la version estatica gana en "
+            "todas las cantidades de hilos. El detalle celda a celda esta en la seccion 8.2.",
             "<b>Contadores privatizados.</b> No mejoro el tiempo de forma medible en este "
             "programa, porque la cantidad de pelotas que llegan al fondo en un paso es pequena "
             "frente a N y la contencion sobre las operaciones atomicas era baja. Se conserva "
@@ -1228,10 +1263,10 @@ def seccion_conclusiones():
             "pero no existe una que gane siempre. En un procesador con nucleos asimetricos, "
             "<font face='Courier'>schedule(guided)</font> recupero una parte sustancial del "
             "rendimiento que <font face='Courier'>schedule(static)</font> perdia por desbalance "
-            "cuando el equipo incluia los dos nucleos lentos y habia trabajo suficiente que "
-            "repartir; en cambio, con cargas pequenas el reparto estatico gano en todas las "
-            "cantidades de hilos, porque ahi el costo de planificacion del reparto guiado no "
-            "alcanza a amortizarse.",
+            "cuando coincidian carga alta y seis u ocho hilos; en cambio, con cargas pequenas el "
+            "reparto estatico gano en todas las cantidades de hilos, porque ahi el costo de "
+            "planificacion del reparto guiado no alcanza a amortizarse. No existe una politica "
+            "de reparto que gane siempre: la eleccion depende del punto de operacion.",
 
             "El beneficio de paralelizar depende del tamano del problema. Por debajo de unas 500 "
             "pelotas la sobrecarga de la region paralela consume la ganancia; a partir de ahi la "
@@ -1545,9 +1580,10 @@ def anexo_4():
     ]
     capturas = [
         ("piramide_frontal.png",
-         "Configuracion por omision: N = 3 000 pelotas cayendo sobre una piramide de 277 "
-         "clavijas repartidas en 12 niveles, con 24 sectores contadores en la base. Las clavijas "
-         "grandes en tonos frios forman la estructura; las ambar son las que oscilan."),
+         "Configuracion por omision a pantalla completa (3024 x 1898): N = 3 000 pelotas "
+         "lloviendo sobre una piramide de 277 clavijas repartidas en 12 niveles, con 24 sectores "
+         "contadores en la base. Las clavijas grandes en tonos frios forman la estructura; las "
+         "ambar son las que oscilan."),
         ("piramide_girada.png",
          "La misma escena unos segundos despues. La camara ha girado alrededor del eje vertical, "
          "lo que revela la forma conica y la corona de sectores. El giro es puramente visual y no "
@@ -1555,6 +1591,10 @@ def anexo_4():
         ("piramide_estructura.png",
          "La misma piramide con solo 300 pelotas, para que se aprecie la estructura: los aros que "
          "unen las clavijas de cada nivel y las aristas que van del vertice a la base."),
+        ("modo_secuencial.png",
+         "La misma carga en modo secuencial. El contador de cuadros por segundo cambia de verde a "
+         "ambar y el tiempo de fisica pasa de unos 5 ms a mas de 20 ms: es la diferencia que "
+         "produce la paralelizacion, visible sin salir del programa."),
     ]
     for archivo, pie in capturas:
         ruta = os.path.join(CAPTURAS, archivo)

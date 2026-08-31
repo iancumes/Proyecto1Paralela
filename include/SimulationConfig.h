@@ -41,7 +41,7 @@ struct SimulationParams {
     float ballRadius     = 0.085F;  // Radio base de cada pelota.
     float gravity        = -9.81F; // Aceleracion de la gravedad (unidades/s^2).
     float restitution    = 0.68F;  // Coeficiente de restitucion de los rebotes.
-    float boardRadius    = 12.5F;  // Radio del cilindro que contiene la escena.
+    float boardRadius    = 13.5F;  // Radio del cilindro que contiene la escena.
     float boardHeight    = 10.5F;   // Altura util de la escena.
     bool ballInteraction = true;   // Habilita las colisiones pelota-pelota O(N^2).
     std::uint32_t seed   = 20260829U; // Semilla global del generador pseudoaleatorio.
@@ -66,7 +66,7 @@ struct AppConfig {
     bool vsync       = true;              // Sincroniza el intercambio de buffers.
     bool fullscreen  = true;              // Abre a pantalla completa; --windowed lo desactiva.
     float rotationSpeed = 11.0F;          // Grados por segundo que gira la camara.
-    float cameraPitch   = 12.0F;          // Inclinacion de la camara sobre la horizontal.
+    float cameraPitch   = 9.0F;          // Inclinacion de la camara sobre la horizontal.
     bool showHelp    = false;             // Solicito la ayuda y no debe simularse.
     bool runBenchmark = false;            // Ejecuta el banco de pruebas sin ventana.
     bool allowPrompt = true;              // Permite pedir datos por consola si faltan.
