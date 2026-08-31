@@ -4,9 +4,9 @@ Nucleos logicos: 8  fisicos: 8
 Rendimiento/Eficiencia: 6/2
 RAM: 16 GB
 ProductName:		macOS
-ProductVersion:		26.5.1
-BuildVersion:		25F80
+ProductVersion:		26.6.2
+BuildVersion:		25G83
 Compilador: Apple clang version 17.0.0 (clang-1700.6.3.2)
 Escena: 277 clavijas en 12 niveles, 8 modificadores, 24 sectores, arena de radio 13.5 y altura 9
-Fecha: 2026-08-30 22:01:33 CST
+Fecha: 2026-08-31 16:00:53 CST
 

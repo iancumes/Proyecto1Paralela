@@ -33,12 +33,12 @@ solo hilo da 1.00 en las seis cargas (con el promedio se dispersaba entre 0.90 y
 
 | N | Secuencial (ms/paso) | `std::thread` | OMP estático 8h | OMP ajustado 8h | Mejor speedup | Eficiencia |
 |---|---|---|---|---|---|---|
-| 250 | 0.407 | 0.28x | 1.53x | 1.08x | **2.48x** (4 h) | 0.62 |
-| 500 | 1.053 | 0.25x | 2.38x | 2.36x | **3.06x** (4 h) | 0.77 |
-| 1000 | 3.106 | 0.23x | 3.39x | 3.16x | **4.08x** (6 h) | 0.68 |
-| 2000 | 10.301 | no viable | 3.68x | 4.15x | **4.46x** (6 h) | 0.74 |
-| 4000 | 36.682 | no viable | 3.48x | 4.44x | **4.44x** (8 h) | 0.56 |
-| 8000 | 136.021 | no viable | 4.26x | 4.74x | **4.74x** (8 h) | 0.59 |
+| 250 | 0.410 | 0.28x | 1.57x | 1.29x | **2.32x** (4 h) | 0.58 |
+| 500 | 1.066 | 0.27x | 2.35x | 2.44x | **3.13x** (4 h) | 0.78 |
+| 1000 | 3.151 | 0.24x | 3.46x | 3.87x | **4.22x** (6 h) | 0.70 |
+| 2000 | 10.149 | no viable | 3.86x | 4.72x | **5.03x** (6 h) | 0.84 |
+| 4000 | 36.369 | no viable | 4.17x | 5.18x | **5.20x** (6 h) | 0.87 |
+| 8000 | 134.194 | no viable | 4.75x | 5.53x | **5.53x** (8 h) | 0.69 |
 
 Con la configuración por omisión (N = 3 000) el cambio de modo se ve de
 inmediato en el HUD:
@@ -47,7 +47,7 @@ inmediato en el HUD:
 |---|---|---|
 | Secuencial | 42 (ámbar) | 22.1 ms |
 | OpenMP estático, 8 hilos | 140 (verde) | 5.3 ms |
-| OpenMP ajustado, 8 hilos | 153 (verde) | 4.9 ms |
+| OpenMP ajustado, 8 hilos | 173 (verde) | 4.4 ms |
 
 Tres cosas que vale la pena señalar:
 
@@ -56,12 +56,12 @@ Tres cosas que vale la pena señalar:
   operativo ya no permite crearla. El costo de despertar y dormir N hilos crece
   con N mientras el trabajo por hilo se mantiene constante.
 - **`schedule(guided)` no siempre gana.** Con dos hilos las dos versiones son
-  indistinguibles (0.03x de diferencia). Con cargas pequeñas el reparto estático
-  gana en todas las cantidades de hilos, porque el costo de que los hilos vuelvan
-  a pedir tarea no se amortiza. La ventaja de la versión ajustada aparece cuando
-  coinciden carga alta y seis u ocho hilos, y llega al 28 %: ahí entran al equipo
-  los dos núcleos de eficiencia y el reparto estático se desbalancea. No existe
-  una política de reparto que gane siempre.
+  indistinguibles. Con N pequeño el reparto estático gana, porque el costo de que
+  los hilos vuelvan a pedir tarea no se amortiza. La ventaja de la versión
+  ajustada aparece cuando coinciden carga alta y varios hilos: ahí entran al
+  equipo los dos núcleos de eficiencia y el reparto estático se desbalancea. No
+  existe una política de reparto que gane siempre; el informe genera esa
+  comparación directamente de los datos para que no se desactualice.
 - **Paralelizar solo rinde si el problema es grande.** Con N = 250 la sobrecarga
   de la región paralela se come la ganancia; a partir de N ≈ 1 000 la eficiencia
   crece de forma sostenida.
@@ -276,6 +276,20 @@ docs/
   graficas/              Figuras y diagrama de flujo
   resultados/            CSV y bitácora del banco de pruebas
 ```
+
+### La distribución por sectores
+
+Los sectores de la base cuentan en qué ángulo aterriza cada pelota y su altura
+crece con ese conteo. Un resultado que conviene explicar: **la distribución
+angular es uniforme**, y no podría ser de otra forma, porque la escena tiene
+simetría de revolución. Medida sobre 48 382 pelotas, cada uno de los 24 sectores
+recibe entre 4.00 % y 4.33 % del total, contra un 4.17 % teórico.
+
+Por eso las barras no se normalizan contra cero sino entre el mínimo y el máximo
+observados: así las diferencias reales se vuelven visibles en lugar de quedar
+todas pegadas al tope. El HUD despliega la **dispersión** verdadera —del orden
+del 8 %— para que la amplificación no induzca a error, y al cerrar el programa se
+imprime el histograma completo en la consola.
 
 ## Notas de implementación
 

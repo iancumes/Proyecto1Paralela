@@ -62,11 +62,13 @@ void respawnAtTop(Ball& ball, const SimulationParams& params) {
     const float distance = spawnRadius * std::sqrt(nextRandomFloat(ball.seed));
     ball.position.x = std::cos(angle) * distance;
     ball.position.z = std::sin(angle) * distance;
-    // La altura de aparicion se reparte sobre una franja alta en lugar de un
-    // punto fijo: si todas nacen a la misma altura se amontonan y forman una
-    // columna atascada sobre el vertice.
+    // La altura de aparicion se reparte sobre una franja ancha en lugar de un
+    // punto fijo. Dos razones: si todas nacen a la misma altura se amontonan y
+    // forman una columna atascada sobre el vertice, y ademas una franja gruesa
+    // mantiene una cortina de lluvia constante sobre la piramide, que es lo que
+    // llena la mitad superior del lienzo.
     ball.position.y = params.ceilingY() - ball.radius -
-                      nextRandomInRange(ball.seed, 0.0F, params.boardHeight * 0.14F);
+                      nextRandomInRange(ball.seed, 0.0F, params.boardHeight * 0.34F);
     ball.velocity.x = nextRandomInRange(ball.seed, -0.5F, 0.5F);
     ball.velocity.y = nextRandomInRange(ball.seed, -1.2F, -0.2F);
     ball.velocity.z = nextRandomInRange(ball.seed, -0.5F, 0.5F);

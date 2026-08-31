@@ -2,106 +2,106 @@ OpenMP disponible. Hilos maximos reportados: 8
 Repeticiones por medicion: 12  |  interacciones pelota-pelota: si
 
 == N = 250  (240 pasos por repeticion) ==
-  secuencial                 0.4200 ms/paso  (min   0.4066  max   0.4941  sd  0.0227)   2380.8 FPS
-  std::thread x250           1.6030 ms/paso  (min   1.4625  max   1.7813  sd  0.1017)  speedup  0.26x  eficiencia  0.001
-  openmp-static x1           0.4159 ms/paso  (min   0.4118  max   0.4205  sd  0.0029)  speedup  1.01x  eficiencia  1.010
-  openmp-static x2           0.2494 ms/paso  (min   0.2434  max   0.2641  sd  0.0054)  speedup  1.68x  eficiencia  0.842
-  openmp-static x4           0.1789 ms/paso  (min   0.1642  max   0.1890  sd  0.0071)  speedup  2.35x  eficiencia  0.587
-  openmp-static x6           0.2687 ms/paso  (min   0.2326  max   0.3311  sd  0.0336)  speedup  1.56x  eficiencia  0.261
-  openmp-static x8           0.2943 ms/paso  (min   0.2651  max   0.3426  sd  0.0276)  speedup  1.43x  eficiencia  0.178
-  openmp-tuned x1            0.4105 ms/paso  (min   0.4080  max   0.4129  sd  0.0014)  speedup  1.02x  eficiencia  1.023
-  openmp-tuned x2            0.2511 ms/paso  (min   0.2466  max   0.2582  sd  0.0037)  speedup  1.67x  eficiencia  0.837
-  openmp-tuned x4            0.2561 ms/paso  (min   0.2115  max   0.3162  sd  0.0401)  speedup  1.64x  eficiencia  0.410
-  openmp-tuned x6            0.2825 ms/paso  (min   0.2635  max   0.3536  sd  0.0245)  speedup  1.49x  eficiencia  0.248
-  openmp-tuned x8            0.4442 ms/paso  (min   0.3751  max   0.6456  sd  0.0823)  speedup  0.95x  eficiencia  0.118
+  secuencial                 0.4168 ms/paso  (min   0.4104  max   0.4347  sd  0.0071)   2399.0 FPS
+  std::thread x250           1.5464 ms/paso  (min   1.4599  max   1.7360  sd  0.0855)  speedup  0.27x  eficiencia  0.001
+  openmp-static x1           0.4200 ms/paso  (min   0.4130  max   0.4290  sd  0.0054)  speedup  0.99x  eficiencia  0.992
+  openmp-static x2           0.2608 ms/paso  (min   0.2493  max   0.2968  sd  0.0134)  speedup  1.60x  eficiencia  0.799
+  openmp-static x4           0.1916 ms/paso  (min   0.1767  max   0.2980  sd  0.0324)  speedup  2.18x  eficiencia  0.544
+  openmp-static x6           0.2447 ms/paso  (min   0.2303  max   0.2810  sd  0.0165)  speedup  1.70x  eficiencia  0.284
+  openmp-static x8           0.2905 ms/paso  (min   0.2606  max   0.4027  sd  0.0405)  speedup  1.43x  eficiencia  0.179
+  openmp-tuned x1            0.4141 ms/paso  (min   0.4109  max   0.4174  sd  0.0017)  speedup  1.01x  eficiencia  1.007
+  openmp-tuned x2            0.2694 ms/paso  (min   0.2542  max   0.3024  sd  0.0154)  speedup  1.55x  eficiencia  0.774
+  openmp-tuned x4            0.2082 ms/paso  (min   0.2003  max   0.2219  sd  0.0062)  speedup  2.00x  eficiencia  0.500
+  openmp-tuned x6            0.2690 ms/paso  (min   0.2537  max   0.3174  sd  0.0168)  speedup  1.55x  eficiencia  0.258
+  openmp-tuned x8            0.3278 ms/paso  (min   0.3189  max   0.3580  sd  0.0097)  speedup  1.27x  eficiencia  0.159
 
 == N = 500  (240 pasos por repeticion) ==
-  secuencial                 1.0754 ms/paso  (min   1.0529  max   1.1508  sd  0.0317)    929.8 FPS
-  std::thread x500           4.3813 ms/paso  (min   4.1816  max   4.5562  sd  0.1064)  speedup  0.25x  eficiencia  0.000
-  openmp-static x1           1.0896 ms/paso  (min   1.0780  max   1.1016  sd  0.0077)  speedup  0.99x  eficiencia  0.987
-  openmp-static x2           0.6392 ms/paso  (min   0.5931  max   0.7284  sd  0.0494)  speedup  1.68x  eficiencia  0.841
-  openmp-static x4           0.3661 ms/paso  (min   0.3436  max   0.3951  sd  0.0135)  speedup  2.94x  eficiencia  0.734
-  openmp-static x6           0.3870 ms/paso  (min   0.3695  max   0.4136  sd  0.0127)  speedup  2.78x  eficiencia  0.463
-  openmp-static x8           0.4720 ms/paso  (min   0.4431  max   0.6382  sd  0.0534)  speedup  2.28x  eficiencia  0.285
-  openmp-tuned x1            1.1050 ms/paso  (min   1.0696  max   1.2663  sd  0.0526)  speedup  0.97x  eficiencia  0.973
-  openmp-tuned x2            0.6272 ms/paso  (min   0.5980  max   0.7012  sd  0.0298)  speedup  1.71x  eficiencia  0.857
-  openmp-tuned x4            0.4505 ms/paso  (min   0.3948  max   0.6620  sd  0.0727)  speedup  2.39x  eficiencia  0.597
-  openmp-tuned x6            0.4167 ms/paso  (min   0.3808  max   0.4850  sd  0.0242)  speedup  2.58x  eficiencia  0.430
-  openmp-tuned x8            0.4649 ms/paso  (min   0.4456  max   0.4919  sd  0.0137)  speedup  2.31x  eficiencia  0.289
+  secuencial                 1.2919 ms/paso  (min   1.0660  max   2.4936  sd  0.3874)    774.1 FPS
+  std::thread x500           4.2873 ms/paso  (min   3.9483  max   5.1795  sd  0.3002)  speedup  0.30x  eficiencia  0.001
+  openmp-static x1           1.1678 ms/paso  (min   1.0703  max   2.0247  sd  0.2588)  speedup  1.11x  eficiencia  1.106
+  openmp-static x2           0.6716 ms/paso  (min   0.5853  max   0.9975  sd  0.1120)  speedup  1.92x  eficiencia  0.962
+  openmp-static x4           0.3991 ms/paso  (min   0.3410  max   0.7821  sd  0.1166)  speedup  3.24x  eficiencia  0.809
+  openmp-static x6           0.5921 ms/paso  (min   0.4327  max   1.1153  sd  0.1771)  speedup  2.18x  eficiencia  0.364
+  openmp-static x8           0.7362 ms/paso  (min   0.4539  max   1.6714  sd  0.3286)  speedup  1.75x  eficiencia  0.219
+  openmp-tuned x1            1.1311 ms/paso  (min   1.0724  max   1.3654  sd  0.0837)  speedup  1.14x  eficiencia  1.142
+  openmp-tuned x2            0.6175 ms/paso  (min   0.5853  max   0.6647  sd  0.0203)  speedup  2.09x  eficiencia  1.046
+  openmp-tuned x4            0.4119 ms/paso  (min   0.3771  max   0.4859  sd  0.0313)  speedup  3.14x  eficiencia  0.784
+  openmp-tuned x6            0.4005 ms/paso  (min   0.3870  max   0.4151  sd  0.0088)  speedup  3.23x  eficiencia  0.538
+  openmp-tuned x8            0.4697 ms/paso  (min   0.4370  max   0.7010  sd  0.0704)  speedup  2.75x  eficiencia  0.344
 
 == N = 1000  (240 pasos por repeticion) ==
-  secuencial                 3.1659 ms/paso  (min   3.1058  max   3.2928  sd  0.0640)    315.9 FPS
-  std::thread x1000         14.8200 ms/paso  (min  13.2572  max  22.1424  sd  2.5312)  speedup  0.21x  eficiencia  0.000
-  openmp-static x1           3.1781 ms/paso  (min   3.1128  max   3.2656  sd  0.0456)  speedup  1.00x  eficiencia  0.996
-  openmp-static x2           1.6712 ms/paso  (min   1.6319  max   1.7486  sd  0.0347)  speedup  1.89x  eficiencia  0.947
-  openmp-static x4           0.9835 ms/paso  (min   0.8792  max   1.2364  sd  0.1177)  speedup  3.22x  eficiencia  0.805
-  openmp-static x6           0.9077 ms/paso  (min   0.7614  max   1.1097  sd  0.1024)  speedup  3.49x  eficiencia  0.581
-  openmp-static x8           1.0298 ms/paso  (min   0.9159  max   1.2519  sd  0.0903)  speedup  3.07x  eficiencia  0.384
-  openmp-tuned x1            3.2560 ms/paso  (min   3.1380  max   3.4652  sd  0.1037)  speedup  0.97x  eficiencia  0.972
-  openmp-tuned x2            2.9158 ms/paso  (min   1.6620  max   7.7075  sd  1.7295)  speedup  1.09x  eficiencia  0.543
-  openmp-tuned x4            1.3036 ms/paso  (min   1.0049  max   1.8141  sd  0.2483)  speedup  2.43x  eficiencia  0.607
-  openmp-tuned x6            1.5151 ms/paso  (min   0.9109  max   3.7992  sd  0.8256)  speedup  2.09x  eficiencia  0.348
-  openmp-tuned x8            1.1694 ms/paso  (min   0.9827  max   1.5844  sd  0.1779)  speedup  2.71x  eficiencia  0.338
+  secuencial                 3.3758 ms/paso  (min   3.1512  max   4.0667  sd  0.3098)    296.2 FPS
+  std::thread x1000         14.0217 ms/paso  (min  13.1002  max  17.2924  sd  1.2077)  speedup  0.24x  eficiencia  0.000
+  openmp-static x1           3.1380 ms/paso  (min   3.0670  max   3.2311  sd  0.0427)  speedup  1.08x  eficiencia  1.076
+  openmp-static x2           1.6568 ms/paso  (min   1.6142  max   1.7547  sd  0.0416)  speedup  2.04x  eficiencia  1.019
+  openmp-static x4           0.9485 ms/paso  (min   0.8741  max   1.2067  sd  0.0864)  speedup  3.56x  eficiencia  0.890
+  openmp-static x6           0.8328 ms/paso  (min   0.7552  max   1.0698  sd  0.1024)  speedup  4.05x  eficiencia  0.676
+  openmp-static x8           0.9660 ms/paso  (min   0.9114  max   1.2127  sd  0.0831)  speedup  3.49x  eficiencia  0.437
+  openmp-tuned x1            3.3200 ms/paso  (min   3.1252  max   4.0815  sd  0.2771)  speedup  1.02x  eficiencia  1.017
+  openmp-tuned x2            1.6753 ms/paso  (min   1.6312  max   1.8049  sd  0.0491)  speedup  2.02x  eficiencia  1.008
+  openmp-tuned x4            0.9320 ms/paso  (min   0.9030  max   0.9958  sd  0.0244)  speedup  3.62x  eficiencia  0.906
+  openmp-tuned x6            0.8308 ms/paso  (min   0.7475  max   1.0738  sd  0.1028)  speedup  4.06x  eficiencia  0.677
+  openmp-tuned x8            0.8672 ms/paso  (min   0.8141  max   0.9939  sd  0.0602)  speedup  3.89x  eficiencia  0.487
 
 == N = 2000  (75 pasos por repeticion) ==
-  secuencial                11.0570 ms/paso  (min  10.3007  max  13.0498  sd  0.8679)     90.4 FPS
+  secuencial                10.2660 ms/paso  (min  10.1493  max  10.7323  sd  0.1572)     97.4 FPS
   std::thread x2000       no aplicable: N supera el limite practico de un hilo por pelota
-  openmp-static x1          11.6146 ms/paso  (min  10.3849  max  15.6564  sd  1.4831)  speedup  0.95x  eficiencia  0.952
-  openmp-static x2           6.1320 ms/paso  (min   5.3001  max   8.4775  sd  0.8530)  speedup  1.80x  eficiencia  0.902
-  openmp-static x4           3.4507 ms/paso  (min   2.9346  max   4.3038  sd  0.4680)  speedup  3.20x  eficiencia  0.801
-  openmp-static x6           3.5284 ms/paso  (min   2.6085  max   5.1289  sd  0.7278)  speedup  3.13x  eficiencia  0.522
-  openmp-static x8           3.2167 ms/paso  (min   2.8017  max   3.8301  sd  0.3319)  speedup  3.44x  eficiencia  0.430
-  openmp-tuned x1           10.8977 ms/paso  (min  10.3809  max  11.8920  sd  0.5057)  speedup  1.01x  eficiencia  1.015
-  openmp-tuned x2            6.0758 ms/paso  (min   5.3335  max   9.2239  sd  1.0138)  speedup  1.82x  eficiencia  0.910
-  openmp-tuned x4            4.4836 ms/paso  (min   2.9846  max   8.2987  sd  1.9034)  speedup  2.47x  eficiencia  0.617
-  openmp-tuned x6            2.7152 ms/paso  (min   2.3090  max   3.4252  sd  0.4012)  speedup  4.07x  eficiencia  0.679
-  openmp-tuned x8            2.7368 ms/paso  (min   2.4831  max   3.2956  sd  0.2934)  speedup  4.04x  eficiencia  0.505
+  openmp-static x1          10.3020 ms/paso  (min  10.1989  max  10.4994  sd  0.0928)  speedup  1.00x  eficiencia  0.997
+  openmp-static x2           5.3720 ms/paso  (min   5.2254  max   5.7615  sd  0.1750)  speedup  1.91x  eficiencia  0.956
+  openmp-static x4           2.9287 ms/paso  (min   2.8384  max   3.1971  sd  0.0984)  speedup  3.51x  eficiencia  0.876
+  openmp-static x6           2.7935 ms/paso  (min   2.5297  max   3.2132  sd  0.1880)  speedup  3.68x  eficiencia  0.613
+  openmp-static x8           2.8959 ms/paso  (min   2.6324  max   3.5166  sd  0.2468)  speedup  3.55x  eficiencia  0.443
+  openmp-tuned x1           10.3991 ms/paso  (min  10.2513  max  10.6328  sd  0.1225)  speedup  0.99x  eficiencia  0.987
+  openmp-tuned x2            5.3150 ms/paso  (min   5.2029  max   5.8434  sd  0.1690)  speedup  1.93x  eficiencia  0.966
+  openmp-tuned x4            2.7815 ms/paso  (min   2.7205  max   2.9472  sd  0.0631)  speedup  3.69x  eficiencia  0.923
+  openmp-tuned x6            2.2423 ms/paso  (min   2.0191  max   2.7197  sd  0.1827)  speedup  4.58x  eficiencia  0.763
+  openmp-tuned x8            2.2764 ms/paso  (min   2.1481  max   2.6444  sd  0.1331)  speedup  4.51x  eficiencia  0.564
 
 == N = 4000  (18 pasos por repeticion) ==
-  secuencial                38.7730 ms/paso  (min  36.6824  max  42.4651  sd  1.8799)     25.8 FPS
+  secuencial                36.5670 ms/paso  (min  36.3690  max  37.1899  sd  0.2508)     27.3 FPS
   std::thread x4000       no aplicable: N supera el limite practico de un hilo por pelota
-  openmp-static x1          39.0636 ms/paso  (min  37.6818  max  43.6111  sd  1.5701)  speedup  0.99x  eficiencia  0.993
-  openmp-static x2          20.4669 ms/paso  (min  19.0220  max  22.6779  sd  1.0478)  speedup  1.89x  eficiencia  0.947
-  openmp-static x4          13.7498 ms/paso  (min  11.0091  max  24.6862  sd  3.5460)  speedup  2.82x  eficiencia  0.705
-  openmp-static x6          10.2323 ms/paso  (min   9.4484  max  12.3436  sd  0.8407)  speedup  3.79x  eficiencia  0.632
-  openmp-static x8          11.7138 ms/paso  (min  10.5399  max  14.0192  sd  1.2924)  speedup  3.31x  eficiencia  0.414
-  openmp-tuned x1           39.4462 ms/paso  (min  37.6550  max  44.0861  sd  1.9389)  speedup  0.98x  eficiencia  0.983
-  openmp-tuned x2           19.9695 ms/paso  (min  19.0130  max  22.2185  sd  0.8787)  speedup  1.94x  eficiencia  0.971
-  openmp-tuned x4           13.6855 ms/paso  (min  10.5310  max  23.5370  sd  4.3041)  speedup  2.83x  eficiencia  0.708
-  openmp-tuned x6            9.1817 ms/paso  (min   8.4406  max  10.5893  sd  0.7436)  speedup  4.22x  eficiencia  0.704
-  openmp-tuned x8            9.6012 ms/paso  (min   8.2542  max  14.4282  sd  1.7242)  speedup  4.04x  eficiencia  0.505
+  openmp-static x1          36.7512 ms/paso  (min  36.4437  max  37.7251  sd  0.3555)  speedup  0.99x  eficiencia  0.995
+  openmp-static x2          18.8472 ms/paso  (min  18.5562  max  19.1049  sd  0.1886)  speedup  1.94x  eficiencia  0.970
+  openmp-static x4           9.9201 ms/paso  (min   9.6053  max  10.6453  sd  0.2861)  speedup  3.69x  eficiencia  0.922
+  openmp-static x6           7.7851 ms/paso  (min   7.2829  max   8.6110  sd  0.3428)  speedup  4.70x  eficiencia  0.783
+  openmp-static x8           9.1015 ms/paso  (min   8.7130  max  10.2023  sd  0.4039)  speedup  4.02x  eficiencia  0.502
+  openmp-tuned x1           36.5551 ms/paso  (min  36.3352  max  37.0235  sd  0.1820)  speedup  1.00x  eficiencia  1.000
+  openmp-tuned x2           19.3146 ms/paso  (min  19.0070  max  20.1872  sd  0.3053)  speedup  1.89x  eficiencia  0.947
+  openmp-tuned x4            9.7591 ms/paso  (min   9.4032  max  10.9050  sd  0.3652)  speedup  3.75x  eficiencia  0.937
+  openmp-tuned x6            7.5246 ms/paso  (min   6.9897  max   9.0218  sd  0.4811)  speedup  4.86x  eficiencia  0.810
+  openmp-tuned x8            7.7472 ms/paso  (min   7.0155  max   8.4483  sd  0.5332)  speedup  4.72x  eficiencia  0.590
 
 == N = 8000  (4 pasos por repeticion) ==
-  secuencial               144.3133 ms/paso  (min 136.0206  max 163.0252  sd  7.4764)      6.9 FPS
+  secuencial               135.2707 ms/paso  (min 134.1935  max 137.0904  sd  0.8176)      7.4 FPS
   std::thread x8000       no aplicable: N supera el limite practico de un hilo por pelota
-  openmp-static x1         145.0670 ms/paso  (min 137.1310  max 158.4240  sd  7.1366)  speedup  0.99x  eficiencia  0.995
-  openmp-static x2          81.8537 ms/paso  (min  69.8500  max 139.6334  sd 18.6197)  speedup  1.76x  eficiencia  0.882
-  openmp-static x4          42.3214 ms/paso  (min  37.7188  max  52.8336  sd  4.8490)  speedup  3.41x  eficiencia  0.852
-  openmp-static x6          37.4864 ms/paso  (min  29.5916  max  43.2049  sd  4.5362)  speedup  3.85x  eficiencia  0.642
-  openmp-static x8          38.4183 ms/paso  (min  31.9310  max  46.0125  sd  4.0152)  speedup  3.76x  eficiencia  0.470
-  openmp-tuned x1          145.0877 ms/paso  (min 135.9464  max 181.7319  sd 13.9711)  speedup  0.99x  eficiencia  0.995
-  openmp-tuned x2           89.7153 ms/paso  (min  70.2789  max 189.8582  sd 31.8781)  speedup  1.61x  eficiencia  0.804
-  openmp-tuned x4           40.2090 ms/paso  (min  36.0396  max  63.7721  sd  7.5609)  speedup  3.59x  eficiencia  0.897
-  openmp-tuned x6           39.2812 ms/paso  (min  30.8230  max  56.5272  sd  8.0894)  speedup  3.67x  eficiencia  0.612
-  openmp-tuned x8           35.8614 ms/paso  (min  28.6998  max  48.5998  sd  5.7596)  speedup  4.02x  eficiencia  0.503
+  openmp-static x1         135.0408 ms/paso  (min 134.1842  max 136.3239  sd  0.6871)  speedup  1.00x  eficiencia  1.002
+  openmp-static x2          68.9758 ms/paso  (min  67.7805  max  73.3980  sd  1.4095)  speedup  1.96x  eficiencia  0.981
+  openmp-static x4          35.8901 ms/paso  (min  35.0203  max  40.6647  sd  1.5020)  speedup  3.77x  eficiencia  0.942
+  openmp-static x6          27.6429 ms/paso  (min  26.4927  max  29.6398  sd  0.9730)  speedup  4.89x  eficiencia  0.816
+  openmp-static x8          30.8748 ms/paso  (min  28.2446  max  37.4818  sd  2.3415)  speedup  4.38x  eficiencia  0.548
+  openmp-tuned x1          136.1516 ms/paso  (min 135.2093  max 138.2002  sd  0.7856)  speedup  0.99x  eficiencia  0.994
+  openmp-tuned x2           69.6413 ms/paso  (min  68.0029  max  72.7134  sd  1.5439)  speedup  1.94x  eficiencia  0.971
+  openmp-tuned x4           35.7642 ms/paso  (min  34.6153  max  38.7062  sd  1.1654)  speedup  3.78x  eficiencia  0.946
+  openmp-tuned x6           26.5388 ms/paso  (min  25.0654  max  28.0400  sd  0.8657)  speedup  5.10x  eficiencia  0.850
+  openmp-tuned x8           26.0714 ms/paso  (min  24.2809  max  37.3896  sd  3.4741)  speedup  5.19x  eficiencia  0.649
 
 == Presupuesto de 60 FPS (16.6667 ms por cuadro) ==
-  N=4000   secuencial             excede el presupuesto: 38.77 ms por paso
-  N=4000   openmp-static x1       excede el presupuesto: 39.06 ms por paso
-  N=4000   openmp-static x2       excede el presupuesto: 20.47 ms por paso
-  N=4000   openmp-tuned x1        excede el presupuesto: 39.45 ms por paso
-  N=4000   openmp-tuned x2        excede el presupuesto: 19.97 ms por paso
-  N=8000   secuencial             excede el presupuesto: 144.31 ms por paso
-  N=8000   openmp-static x1       excede el presupuesto: 145.07 ms por paso
-  N=8000   openmp-static x2       excede el presupuesto: 81.85 ms por paso
-  N=8000   openmp-static x4       excede el presupuesto: 42.32 ms por paso
-  N=8000   openmp-static x6       excede el presupuesto: 37.49 ms por paso
-  N=8000   openmp-static x8       excede el presupuesto: 38.42 ms por paso
-  N=8000   openmp-tuned x1        excede el presupuesto: 145.09 ms por paso
-  N=8000   openmp-tuned x2        excede el presupuesto: 89.72 ms por paso
-  N=8000   openmp-tuned x4        excede el presupuesto: 40.21 ms por paso
-  N=8000   openmp-tuned x6        excede el presupuesto: 39.28 ms por paso
-  N=8000   openmp-tuned x8        excede el presupuesto: 35.86 ms por paso
+  N=4000   secuencial             excede el presupuesto: 36.57 ms por paso
+  N=4000   openmp-static x1       excede el presupuesto: 36.75 ms por paso
+  N=4000   openmp-static x2       excede el presupuesto: 18.85 ms por paso
+  N=4000   openmp-tuned x1        excede el presupuesto: 36.56 ms por paso
+  N=4000   openmp-tuned x2        excede el presupuesto: 19.31 ms por paso
+  N=8000   secuencial             excede el presupuesto: 135.27 ms por paso
+  N=8000   openmp-static x1       excede el presupuesto: 135.04 ms por paso
+  N=8000   openmp-static x2       excede el presupuesto: 68.98 ms por paso
+  N=8000   openmp-static x4       excede el presupuesto: 35.89 ms por paso
+  N=8000   openmp-static x6       excede el presupuesto: 27.64 ms por paso
+  N=8000   openmp-static x8       excede el presupuesto: 30.87 ms por paso
+  N=8000   openmp-tuned x1        excede el presupuesto: 136.15 ms por paso
+  N=8000   openmp-tuned x2        excede el presupuesto: 69.64 ms por paso
+  N=8000   openmp-tuned x4        excede el presupuesto: 35.76 ms por paso
+  N=8000   openmp-tuned x6        excede el presupuesto: 26.54 ms por paso
+  N=8000   openmp-tuned x8        excede el presupuesto: 26.07 ms por paso
 
 Resultados agregados: docs/resultados/benchmark.csv
 Muestras individuales: docs/resultados/benchmark_muestras.csv

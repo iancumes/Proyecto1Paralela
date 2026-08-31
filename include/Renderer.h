@@ -35,6 +35,7 @@ struct HudInfo {
     int threads = 1;                // Hilos activos.
     int ballCount = 0;              // N vigente.
     long long recycled = 0;         // Pelotas recicladas desde el inicio.
+    double sectorSpread = 0.0;      // Dispersion real entre sectores, en por ciento.
     std::string modeName = "";      // Nombre del modo de ejecucion.
     std::string notice = "";        // Mensaje temporal (por ejemplo, un error).
 };

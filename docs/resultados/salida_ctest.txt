@@ -1,13 +1,13 @@
 Test project /Users/javiervalladares/Library/Mobile Documents/com~apple~CloudDocs/Octavo Semestre/Paralela/Proyecto1/build
     Start 1: equivalencia_modos
-1/4 Test #1: equivalencia_modos ...............   Passed    0.56 sec
+1/4 Test #1: equivalencia_modos ...............   Passed    0.95 sec
     Start 2: determinismo_hilos
-2/4 Test #2: determinismo_hilos ...............   Passed    0.36 sec
+2/4 Test #2: determinismo_hilos ...............   Passed    0.30 sec
     Start 3: validacion_argumentos
 3/4 Test #3: validacion_argumentos ............   Passed    0.00 sec
     Start 4: conservacion_conteos
-4/4 Test #4: conservacion_conteos .............   Passed    0.33 sec
+4/4 Test #4: conservacion_conteos .............   Passed    0.23 sec
 
 100% tests passed, 0 tests failed out of 4
 
-Total Test time (real) =   1.26 sec
+Total Test time (real) =   1.49 sec

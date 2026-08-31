@@ -1,6 +1,7 @@
 #include "Renderer.h"
 
 #include "Font5x7.h"
+#include "Random.h"
 
 #include <SDL_opengl.h>
 
@@ -25,13 +26,25 @@ constexpr float FIT_MARGIN = 1.02F;       // Holgura alrededor del contenido.
 // borde mas cercano, lo que ademas hace que la arena parezca continuar mas alla
 // de la pantalla. El valor se ajusto midiendo los pixeles de capturas reales a
 // pantalla completa, no a ojo.
-constexpr float FILL_ZOOM = 0.86F;
+constexpr float FILL_ZOOM = 0.92F;
 
 GLuint g_sphereTexture = 0;  // Textura de esfera preiluminada (pelotas).
 GLuint g_pegTexture = 0;     // Esfera con reborde oscuro, exclusiva de las clavijas.
 GLuint g_glowTexture = 0;    // Halo aditivo que da el aspecto de neon.
 int g_viewportWidth = 1280;  // Ancho actual del lienzo.
 int g_viewportHeight = 720;  // Alto actual del lienzo.
+
+// Estrella del fondo. Se generan una sola vez, en coordenadas normalizadas, de
+// modo que el campo se adapta a cualquier resolucion sin regenerarse.
+struct Estrella {
+    float x;           // Posicion horizontal en [0, 1].
+    float y;           // Posicion vertical en [0, 1].
+    float brillo;      // Brillo base en [0, 1].
+    float tamano;      // Lado en pixeles a 1080p.
+    float fase;        // Desfase del parpadeo.
+    float velocidad;   // Velocidad del parpadeo.
+};
+std::vector<Estrella> g_estrellas;
 
 // Construye una perspectiva sin depender de GLU, que no siempre esta presente.
 // Entradas: campo de vision vertical en grados, relacion de aspecto y planos.
@@ -233,6 +246,95 @@ inline void emitBillboard(const Vec3& center, float radius, const CameraBasis& b
     glTexCoord2f(0.0F, 1.0F); glVertex3f(inferiorIzq.x, inferiorIzq.y, inferiorIzq.z);
 }
 
+// Genera el campo de estrellas del fondo.
+//
+// Sin fondo, una arena circular vista de frente deja negra mas de la mitad de
+// un lienzo 16:9, sobre todo las esquinas y la franja superior. El campo de
+// estrellas y el degradado hacen que la escena ocupe el lienzo entero, que es
+// lo que se espera de un protector de pantalla.
+void generarEstrellas(std::uint32_t semilla) {
+    g_estrellas.clear();
+    g_estrellas.reserve(420);
+    std::uint32_t estado = semilla;
+    for (int indice = 0; indice < 420; ++indice) {
+        Estrella estrella {};
+        estrella.x = nextRandomFloat(estado);
+        estrella.y = nextRandomFloat(estado);
+        // El brillo sigue una potencia para que haya muchas tenues y pocas
+        // brillantes, que es como se ve un cielo real.
+        const float base = nextRandomFloat(estado);
+        estrella.brillo = 0.18F + 0.82F * base * base * base;
+        estrella.tamano = 1.0F + 2.2F * base * base;
+        estrella.fase = nextRandomInRange(estado, 0.0F, 2.0F * PI);
+        estrella.velocidad = nextRandomInRange(estado, 0.25F, 1.1F);
+        g_estrellas.push_back(estrella);
+    }
+}
+
+// Dibuja el fondo a pantalla completa: un degradado vertical mas el campo de
+// estrellas. Se dibuja antes que la escena 3D, sin escribir profundidad.
+void renderFondo(float time) {
+    const float ancho = static_cast<float>(g_viewportWidth);
+    const float alto = static_cast<float>(g_viewportHeight);
+
+    glMatrixMode(GL_PROJECTION);
+    glPushMatrix();
+    glLoadIdentity();
+    glOrtho(0.0, ancho, alto, 0.0, -1.0, 1.0);
+    glMatrixMode(GL_MODELVIEW);
+    glPushMatrix();
+    glLoadIdentity();
+
+    glDisable(GL_DEPTH_TEST);
+    glDepthMask(GL_FALSE);
+    glDisable(GL_TEXTURE_2D);
+    glDisable(GL_ALPHA_TEST);
+
+    // Degradado: violeta profundo arriba, casi negro en el horizonte y un
+    // rescoldo azulado abajo, donde se apoya la arena.
+    glBegin(GL_QUADS);
+    glColor3f(0.055F, 0.030F, 0.115F);
+    glVertex2f(0.0F, 0.0F);
+    glVertex2f(ancho, 0.0F);
+    glColor3f(0.012F, 0.016F, 0.052F);
+    glVertex2f(ancho, alto * 0.62F);
+    glVertex2f(0.0F, alto * 0.62F);
+
+    glColor3f(0.012F, 0.016F, 0.052F);
+    glVertex2f(0.0F, alto * 0.62F);
+    glVertex2f(ancho, alto * 0.62F);
+    glColor3f(0.030F, 0.045F, 0.105F);
+    glVertex2f(ancho, alto);
+    glVertex2f(0.0F, alto);
+    glEnd();
+
+    // Estrellas con parpadeo suave.
+    const float escala = alto / 1080.0F;
+    glBegin(GL_QUADS);
+    for (const Estrella& estrella : g_estrellas) {
+        const float parpadeo =
+            0.72F + 0.28F * std::sin(time * estrella.velocidad + estrella.fase);
+        const float intensidad = estrella.brillo * parpadeo;
+        const float lado = std::max(1.0F, estrella.tamano * escala);
+        const float px = estrella.x * ancho;
+        const float py = estrella.y * alto;
+        glColor4f(intensidad * 0.85F, intensidad * 0.90F, intensidad, 1.0F);
+        glVertex2f(px, py);
+        glVertex2f(px + lado, py);
+        glVertex2f(px + lado, py + lado);
+        glVertex2f(px, py + lado);
+    }
+    glEnd();
+
+    glDepthMask(GL_TRUE);
+    glEnable(GL_DEPTH_TEST);
+    glEnable(GL_ALPHA_TEST);
+    glPopMatrix();
+    glMatrixMode(GL_PROJECTION);
+    glPopMatrix();
+    glMatrixMode(GL_MODELVIEW);
+}
+
 // Calcula a que distancia debe colocarse la camara para que toda la escena
 // quepa en el lienzo, sea cual sea la inclinacion y la relacion de aspecto.
 //
@@ -421,7 +523,17 @@ void renderBins(const SimulationParams& params, const std::vector<long long>& co
     if (counts.empty()) {
         return;
     }
-    const long long maximum = std::max(1LL, *std::max_element(counts.begin(), counts.end()));
+    // Normalizacion entre el minimo y el maximo observados, no entre cero y el
+    // maximo. Motivo: por simetria de revolucion la distribucion angular es
+    // uniforme, asi que con la normalizacion desde cero todas las barras se
+    // pegan al tope y el histograma no muestra nada. Repartiendo el rango real
+    // entre la altura minima y la maxima, las diferencias se vuelven visibles y
+    // las barras crecen desde un tocon cuando la escena arranca de cero.
+    // La dispersion real se despliega en el HUD para que la amplificacion no
+    // induzca a error.
+    const long long maximum = *std::max_element(counts.begin(), counts.end());
+    const long long minimum = *std::min_element(counts.begin(), counts.end());
+    const float rango = static_cast<float>(std::max(1LL, maximum - minimum));
     const float innerRadius = params.boardRadius * 0.80F;
     const float outerRadius = params.boardRadius * 0.99F;
     const float bottom = params.floorY() + 0.02F;
@@ -431,9 +543,15 @@ void renderBins(const SimulationParams& params, const std::vector<long long>& co
 
     glDisable(GL_TEXTURE_2D);
     for (int sector = 0; sector < sectors; ++sector) {
-        const float fraction = static_cast<float>(counts[static_cast<std::size_t>(sector)]) /
-                               static_cast<float>(maximum);
-        const float height = std::max(0.02F, maximumHeight * fraction);
+        const long long conteo = counts[static_cast<std::size_t>(sector)];
+        // "fraction" ubica al sector dentro del rango observado: 0 el que menos
+        // recibio, 1 el que mas.
+        const float fraction = maximum > 0
+            ? static_cast<float>(conteo - minimum) / rango
+            : 0.0F;
+        // Un tocon minimo garantiza que el anillo se vea completo desde el
+        // primer cuadro, antes de que caiga ninguna pelota.
+        const float height = maximumHeight * (0.16F + 0.84F * fraction);
         // El sector empieza en -PI para coincidir con el calculo de la casilla
         // que hace la fisica, que parte de atan2 desplazado.
         const float angle0 = -PI + 2.0F * PI * static_cast<float>(sector) /
@@ -512,6 +630,7 @@ void renderModifiers(const std::vector<Modifier>& modifiers, float time) {
 }  // namespace
 
 void initializeRenderer(int width, int height) {
+    generarEstrellas(0x51A45u);
     g_sphereTexture = createSphereTexture();
     g_pegTexture = createPegTexture();
     g_glowTexture = createGlowTexture();
@@ -593,6 +712,8 @@ void renderScene(const Simulation& simulation, const HudInfo& hud, const CameraS
     const SimulationParams& params = simulation.params();
 
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    renderFondo(simulation.time());
+
     glMatrixMode(GL_MODELVIEW);
     glLoadIdentity();
     const float aspect =
@@ -682,7 +803,7 @@ void renderScene(const Simulation& simulation, const HudInfo& hud, const CameraS
     // partir del avance del tipo de letra, no con un numero fijo.
     const float glyphAdvance = (font5x7::GLYPH_WIDTH + 1) * scale;
     const float panelWidth = marginX * 2.0F + glyphAdvance * 20.5F;
-    const float panelHeight = lineHeight * 7.6F + marginX;
+    const float panelHeight = lineHeight * 8.6F + marginX;
     glColor4f(0.02F, 0.03F, 0.09F, 0.72F);
     glBegin(GL_QUADS);
     glVertex2f(4.0F, 4.0F);
@@ -736,6 +857,12 @@ void renderScene(const Simulation& simulation, const HudInfo& hud, const CameraS
     cursorY += lineHeight;
 
     std::snprintf(buffer, sizeof(buffer), "RECICLADAS %lld", hud.recycled);
+    drawText(buffer, marginX, cursorY, scale, 0.65F, 0.78F, 0.95F, 1.0F);
+    cursorY += lineHeight;
+
+    // La altura de las barras esta amplificada para que las diferencias se
+    // vean; esta cifra dice cuanta variacion real hay entre sectores.
+    std::snprintf(buffer, sizeof(buffer), "DISPERSION %4.1f%%", hud.sectorSpread);
     drawText(buffer, marginX, cursorY, scale, 0.65F, 0.78F, 0.95F, 1.0F);
 
     // Ayuda de teclado en la esquina inferior izquierda.

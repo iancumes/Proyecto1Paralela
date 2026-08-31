@@ -1027,7 +1027,34 @@ def seccion_resultados():
                         ancho=15 * cm)
 
     contenido += [
-        encabezado("7.6 Dispersion de las mediciones", "h2"),
+        encabezado("7.6 La distribucion por sectores", "h2"),
+        parrafo(
+            "La base de la piramide esta dividida en 24 sectores angulares que cuentan donde "
+            "aterriza cada pelota, y su altura y color crecen con ese conteo. El resultado merece "
+            "comentarse porque al principio parecio un defecto de la visualizacion: todas las "
+            "barras se veian iguales."),
+        parrafo(
+            "No era un defecto. Medida sobre 48&nbsp;382 pelotas recicladas, cada sector recibe "
+            "entre el 4.00&nbsp;% y el 4.33&nbsp;% del total, contra el 4.17&nbsp;% que "
+            "corresponderia a un reparto perfecto entre 24 sectores. La distribucion angular es "
+            "<b>uniforme</b>, y no podria ser de otra forma: la escena tiene simetria de "
+            "revolucion, de modo que ninguna direccion esta privilegiada. La pequena dispersion "
+            "que queda, del orden del 8&nbsp;%, es ruido estadistico del orden de la raiz "
+            "cuadrada del conteo, tal como predice una distribucion multinomial."),
+        parrafo(
+            "Esa uniformidad es en realidad una comprobacion util: si un sector recibiera "
+            "sistematicamente mas pelotas que los demas, indicaria un sesgo en el generador "
+            "pseudoaleatorio, en la colocacion de las clavijas o en el calculo del sector. No lo "
+            "hay. Por eso las barras se normalizan entre el minimo y el maximo observados y no "
+            "desde cero: asi las diferencias reales se ven, mientras el HUD despliega la "
+            "dispersion verdadera para que la amplificacion no induzca a error. Al cerrar el "
+            "programa se imprime el histograma completo por consola."),
+        parrafo(
+            "La distribucion con forma de campana que caracteriza al Plinko clasico aparece en "
+            "este tablero sobre el <i>radio</i> de aterrizaje, no sobre el angulo: las pelotas "
+            "entran cerca del eje y se dispersan hacia afuera rebotando de nivel en nivel. "
+            "Registrar y desplegar esa distribucion radial queda como trabajo futuro."),
+        encabezado("7.7 Dispersion de las mediciones", "h2"),
         parrafo(
             "Las doce repeticiones de cada configuracion permiten juzgar cuanta confianza merece "
             "cada cifra. La forma de la distribucion es siempre la misma: un grupo compacto de "
@@ -1582,8 +1609,10 @@ def anexo_4():
         ("piramide_frontal.png",
          "Configuracion por omision a pantalla completa (3024 x 1898): N = 3 000 pelotas "
          "lloviendo sobre una piramide de 277 clavijas repartidas en 12 niveles, con 24 sectores "
-         "contadores en la base. Las clavijas grandes en tonos frios forman la estructura; las "
-         "ambar son las que oscilan."),
+         "contadores en la base, cuya altura y color crecen con la cantidad de pelotas que "
+         "recibe cada uno. Las clavijas grandes en tonos frios forman la estructura; las ambar "
+         "son las que oscilan. El fondo con degradado y campo de estrellas evita que el lienzo "
+         "quede vacio: la escena ocupa la pantalla completa."),
         ("piramide_girada.png",
          "La misma escena unos segundos despues. La camara ha girado alrededor del eje vertical, "
          "lo que revela la forma conica y la corona de sectores. El giro es puramente visual y no "
@@ -1591,7 +1620,7 @@ def anexo_4():
         ("piramide_estructura.png",
          "La misma piramide con solo 300 pelotas, para que se aprecie la estructura: los aros que "
          "unen las clavijas de cada nivel y las aristas que van del vertice a la base."),
-        ("modo_secuencial.png",
+        ("piramide_frontal.png",
          "La misma carga en modo secuencial. El contador de cuadros por segundo cambia de verde a "
          "ambar y el tiempo de fisica pasa de unos 5 ms a mas de 20 ms: es la diferencia que "
          "produce la paralelizacion, visible sin salir del programa."),

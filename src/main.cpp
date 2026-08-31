@@ -365,6 +365,16 @@ int main(int argc, char** argv) {
             hud.modeName = executionModeName(state.mode);
             hud.ballCount = static_cast<int>(simulation.balls().size());
             hud.recycled = simulation.recycledBalls();
+
+            // Dispersion entre sectores: (max - min) / max, en por ciento.
+            const std::vector<long long>& sectores = simulation.binCounts();
+            if (!sectores.empty()) {
+                const long long mayor = *std::max_element(sectores.begin(), sectores.end());
+                const long long menor = *std::min_element(sectores.begin(), sectores.end());
+                hud.sectorSpread = mayor > 0
+                    ? 100.0 * static_cast<double>(mayor - menor) / static_cast<double>(mayor)
+                    : 0.0;
+            }
             hud.loadImbalance = simulation.lastLoadImbalance();
             hud.threads = (state.mode == ExecutionMode::Sequential)
                               ? 1
@@ -398,9 +408,31 @@ int main(int argc, char** argv) {
         }
     }
 
-    // --- 6. Liberacion ordenada de recursos --------------------------------
-    std::cout << "Pelotas recicladas durante la sesion: "
+    // --- 6. Despliegue de resultados y liberacion ordenada -----------------
+    std::cout << "\nPelotas recicladas durante la sesion: "
               << simulation.recycledBalls() << '\n';
+
+    // Histograma final por sector: es el resultado que produce la simulacion.
+    const std::vector<long long>& sectores = simulation.binCounts();
+    if (!sectores.empty() && simulation.recycledBalls() > 0) {
+        const long long maximo = *std::max_element(sectores.begin(), sectores.end());
+        const long long minimo = *std::min_element(sectores.begin(), sectores.end());
+        std::cout << "Distribucion por sector (max " << maximo << ", min " << minimo
+                  << ", dispersion "
+                  << (maximo > 0 ? 100.0 * static_cast<double>(maximo - minimo) /
+                                   static_cast<double>(maximo) : 0.0)
+                  << " %):\n";
+        for (std::size_t indice = 0; indice < sectores.size(); ++indice) {
+            const double porcentaje = 100.0 * static_cast<double>(sectores[indice]) /
+                                      static_cast<double>(simulation.recycledBalls());
+            const int barras = maximo > 0
+                ? static_cast<int>(40.0 * static_cast<double>(sectores[indice]) /
+                                   static_cast<double>(maximo))
+                : 0;
+            std::printf("  %2zu %8lld  %5.2f %%  %s\n", indice, sectores[indice],
+                        porcentaje, std::string(static_cast<std::size_t>(barras), '#').c_str());
+        }
+    }
 
     shutdownRenderer();
     SDL_GL_DeleteContext(context);
