@@ -44,6 +44,11 @@ struct RuntimeState {
     bool resetRequested = false;  // Solicita regenerar la escena.
     std::string notice;           // Aviso temporal mostrado en el HUD.
     double noticeTimer = 0.0;     // Segundos restantes del aviso.
+    float rotationSpeed = 11.0F;  // Grados por segundo que gira la camara.
+    float cameraYaw = 0.0F;       // Angulo acumulado de la orbita.
+    float cameraPitch = 16.0F;    // Inclinacion de la camara.
+    bool fullscreen = true;       // Estado actual de pantalla completa.
+    bool toggleFullscreen = false; // Solicita alternar pantalla completa.
     // Tiempo de referencia del modo secuencial, usado para estimar el speedup
     // en vivo. Se actualiza cada vez que se ejecuta el modo secuencial.
     double sequentialReferenceMs = 0.0;
@@ -61,8 +66,10 @@ ExecutionMode nextMode(ExecutionMode mode) {
 }
 
 // Procesa la cola de eventos de SDL.
+// Entradas: "window" ventana activa, necesaria para consultar el tamano real
+//           del lienzo tras un cambio de tamano.
 // Entradas/Salidas: "state" se modifica segun las teclas pulsadas.
-void processEvents(RuntimeState& state) {
+void processEvents(SDL_Window* window, RuntimeState& state) {
     SDL_Event event;
     while (SDL_PollEvent(&event) != 0) {
         switch (event.type) {
@@ -72,7 +79,15 @@ void processEvents(RuntimeState& state) {
 
             case SDL_WINDOWEVENT:
                 if (event.window.event == SDL_WINDOWEVENT_SIZE_CHANGED) {
-                    resizeRenderer(event.window.data1, event.window.data2);
+                    // Los datos del evento vienen en coordenadas de ventana, que
+                    // en una pantalla de alta densidad valen la mitad que los
+                    // pixeles reales. Usarlos directamente dejaba el viewport a
+                    // un cuarto del lienzo, con la escena en la esquina inferior
+                    // izquierda. Hay que preguntar por el tamano del framebuffer.
+                    int anchoLienzo = event.window.data1;
+                    int altoLienzo = event.window.data2;
+                    SDL_GL_GetDrawableSize(window, &anchoLienzo, &altoLienzo);
+                    resizeRenderer(anchoLienzo, altoLienzo);
                 }
                 break;
 
@@ -101,6 +116,13 @@ void processEvents(RuntimeState& state) {
                     state.threadCount = std::max(current - 1, 1);
                 } else if (key == SDLK_r) {
                     state.resetRequested = true;
+                } else if (key == SDLK_f) {
+                    state.toggleFullscreen = true;
+                } else if (key == SDLK_COMMA) {
+                    // Reduce el giro; puede llegar a invertirlo.
+                    state.rotationSpeed = std::max(state.rotationSpeed - 4.0F, -90.0F);
+                } else if (key == SDLK_PERIOD) {
+                    state.rotationSpeed = std::min(state.rotationSpeed + 4.0F, 90.0F);
                 }
                 break;
             }
@@ -177,10 +199,20 @@ int main(int argc, char** argv) {
     SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 1);
     SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 4);
 
+    // La captura de pantalla necesita un lienzo de tamano conocido, asi que en
+    // ese modo se fuerza la ventana aunque la configuracion pida pantalla
+    // completa.
+    const bool startFullscreen = config.fullscreen && config.screenshotPath.empty();
+    Uint32 windowFlags = SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI;
+    if (startFullscreen) {
+        // FULLSCREEN_DESKTOP conserva la resolucion del escritorio: es
+        // instantaneo y no cambia el modo de video del monitor.
+        windowFlags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
+    }
+
     SDL_Window* window = SDL_CreateWindow(
         "Plinko 3D Paralelo", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
-        config.windowWidth, config.windowHeight,
-        SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
+        config.windowWidth, config.windowHeight, windowFlags);
     if (window == nullptr) {
         std::cerr << "No se pudo crear la ventana: " << SDL_GetError() << '\n';
         SDL_Quit();
@@ -209,6 +241,9 @@ int main(int argc, char** argv) {
     RuntimeState state;
     state.mode = config.mode;
     state.threadCount = config.threadCount;
+    state.rotationSpeed = config.rotationSpeed;
+    state.cameraPitch = config.cameraPitch;
+    state.fullscreen = startFullscreen;
 #ifdef _OPENMP
     state.maxThreads = std::max(1, omp_get_max_threads());
 #else
@@ -223,15 +258,19 @@ int main(int argc, char** argv) {
     std::cout << "Plinko 3D Paralelo\n"
               << "  N = " << config.simulation.ballCount
               << " | clavijas = " << simulation.pegs().size()
+              << " en " << config.simulation.pegLevels << " niveles"
               << " | modificadores = " << simulation.modifiers().size()
-              << " | casillas = " << config.simulation.binCount << '\n'
-              << "  lienzo = " << config.windowWidth << "x" << config.windowHeight
+              << " | sectores = " << config.simulation.binCount << '\n'
+              << "  lienzo = " << drawableWidth << "x" << drawableHeight
+              << (startFullscreen ? " (pantalla completa)" : " (ventana)")
               << " | modo inicial = " << executionModeName(state.mode)
               << " | hilos maximos = " << state.maxThreads << '\n';
 
     // --- 5. Ciclo principal -------------------------------------------------
     HudInfo hud;
     hud.ballCount = config.simulation.ballCount;
+    CameraState camera;
+    camera.pitchDegrees = config.cameraPitch;
 
     auto previousTime = std::chrono::steady_clock::now();
     auto hudTimer = previousTime;
@@ -242,7 +281,15 @@ int main(int argc, char** argv) {
 
     while (state.running) {
         const auto frameStart = std::chrono::steady_clock::now();
-        processEvents(state);
+        processEvents(window, state);
+
+        if (state.toggleFullscreen) {
+            state.toggleFullscreen = false;
+            state.fullscreen = !state.fullscreen;
+            SDL_SetWindowFullscreen(window, state.fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0);
+            SDL_GL_GetDrawableSize(window, &drawableWidth, &drawableHeight);
+            resizeRenderer(drawableWidth, drawableHeight);
+        }
 
         if (state.resetRequested) {
             state.resetRequested = false;
@@ -277,9 +324,20 @@ int main(int argc, char** argv) {
             state.mode = ExecutionMode::OpenMpTuned;
         }
 
+        // La camara gira sobre el eje vertical. Es un efecto puramente visual:
+        // no toca el estado de la simulacion, de modo que los tiempos de fisica
+        // y las mediciones de speedup no se ven afectados.
+        camera.yawDegrees += state.rotationSpeed * deltaTime;
+        if (camera.yawDegrees >= 360.0F) {
+            camera.yawDegrees -= 360.0F;
+        } else if (camera.yawDegrees < 0.0F) {
+            camera.yawDegrees += 360.0F;
+        }
+        camera.pitchDegrees = state.cameraPitch;
+
         // OpenGL solo lee el estado despues de que la fisica termino y la
         // barrera del modo paralelo libero a todos los hilos.
-        renderScene(simulation, hud);
+        renderScene(simulation, hud, camera);
         SDL_GL_SwapWindow(window);
 
         ++framesInWindow;

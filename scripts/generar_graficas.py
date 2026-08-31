@@ -76,9 +76,22 @@ def limpiar(ax, ejes_y=True):
 
 # --- Lectura de datos -------------------------------------------------------
 def leer_resumen():
+    """Lee el CSV agregado.
+
+    El estimador principal es el TIEMPO MINIMO de las 12 repeticiones, no el
+    promedio. La razon es que la interferencia del sistema operativo solo puede
+    anadir tiempo, nunca quitarlo: el minimo es la mejor estimacion del costo
+    real del codigo. La prueba de que el criterio es sano es que el speedup con
+    un solo hilo da 1.00 en las seis cargas, mientras que con el promedio se
+    desviaba hasta 1.06. El promedio, el maximo y la desviacion estandar se
+    conservan y se reportan en el anexo de la bitacora.
+    """
     with open(os.path.join(RESULTADOS, "benchmark.csv")) as archivo:
         filas = []
         for fila in csv.DictReader(archivo):
+            minimo = float(fila["min_ms"])
+            hilos = int(fila["threads"])
+            speedup = float(fila["speedup_best"])
             filas.append({
                 "n": int(fila["n_balls"]),
                 "modo": fila["mode"],
@@ -87,10 +100,10 @@ def leer_resumen():
                 "min": float(fila["min_ms"]),
                 "max": float(fila["max_ms"]),
                 "sd": float(fila["stddev_ms"]),
-                "speedup": float(fila["speedup_avg"]),
-                "speedup_best": float(fila["speedup_best"]),
-                "eficiencia": float(fila["efficiency"]),
-                "fps": float(fila["max_fps"]),
+                "speedup": speedup,
+                "speedup_avg": float(fila["speedup_avg"]),
+                "eficiencia": speedup / max(hilos, 1),
+                "fps": 1000.0 / minimo if minimo > 0 else 0.0,
                 "ok": fila["available"] == "1",
             })
         return filas
@@ -240,7 +253,7 @@ def figura_escalamiento():
                   if f["modo"] == modo and f["ok"] and (hilos is None or f["hilos"] == hilos)]
         puntos.sort(key=lambda f: f["n"])
         xs = [f["n"] for f in puntos]
-        ys = [f["avg"] for f in puntos]
+        ys = [f["min"] for f in puntos]
         ax.plot(xs, ys, color=COLOR_MODO[modo], linewidth=2.0, marker="o",
                 markersize=6, markeredgecolor=SUPERFICIE, markeredgewidth=1.2, zorder=3)
         # Etiqueta directa: con cuatro series la identidad no depende del color.
@@ -259,7 +272,7 @@ def figura_escalamiento():
     ax.set_xticks(VALORES_N)
     ax.set_xticklabels([f"{n:,}".replace(",", " ") for n in VALORES_N])
     ax.set_xlabel("Cantidad de pelotas N (escala logaritmica)", color=TEXTO_2)
-    ax.set_ylabel("Tiempo por paso de fisica [ms]", color=TEXTO_2)
+    ax.set_ylabel("Mejor tiempo por paso de fisica [ms]", color=TEXTO_2)
     ax.set_title("Escalamiento del costo por paso: pendiente 2 en log-log = coste O(N²)",
                  fontsize=11.5, color=TEXTO_1, pad=10)
     ax.set_xlim(200, 22000)

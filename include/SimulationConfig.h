@@ -32,29 +32,28 @@ bool parseExecutionMode(const std::string& text, ExecutionMode& mode);
 // Parametros fisicos y de escena. Se agrupan aparte porque el motor de fisica
 // los necesita completos y el banco de pruebas los reutiliza sin ventana.
 struct SimulationParams {
-    int ballCount        = 600;    // N: cantidad de pelotas a simular y renderizar.
-    int pegRows          = 9;      // Filas de clavijas del tablero.
-    int pegColumns       = 14;     // Columnas de clavijas por fila.
-    int modifierCount    = 5;      // K: zonas modificadoras de fisica.
-    int binCount         = 15;     // Casillas contadoras en la base del tablero.
+    int ballCount        = 3000;   // N: cantidad de pelotas a simular y renderizar.
+    int pegLevels        = 12;     // Niveles de la piramide de clavijas.
+    int pegsPerBaseRing  = 46;     // Clavijas del anillo mas ancho (la base).
+    int modifierCount    = 8;      // K: zonas modificadoras de fisica.
+    int binCount         = 24;     // Sectores contadores alrededor del eje.
     int substeps         = 2;      // Sub-pasos de integracion por cuadro.
-    float ballRadius     = 0.11F;  // Radio base de cada pelota.
+    float ballRadius     = 0.085F;  // Radio base de cada pelota.
     float gravity        = -9.81F; // Aceleracion de la gravedad (unidades/s^2).
-    float restitution    = 0.72F;  // Coeficiente de restitucion de los rebotes.
-    float boardWidth     = 17.0F;  // Ancho util del tablero.
-    float boardHeight    = 10.5F;  // Alto util del tablero.
-    float boardDepth     = 1.7F;   // Profundidad util del tablero.
+    float restitution    = 0.68F;  // Coeficiente de restitucion de los rebotes.
+    float boardRadius    = 12.5F;  // Radio del cilindro que contiene la escena.
+    float boardHeight    = 10.5F;   // Altura util de la escena.
     bool ballInteraction = true;   // Habilita las colisiones pelota-pelota O(N^2).
     std::uint32_t seed   = 20260829U; // Semilla global del generador pseudoaleatorio.
 
-    // Coordenada del piso del tablero (derivada del alto).
+    // Coordenada del piso, donde se cuentan las pelotas.
     float floorY() const { return -boardHeight * 0.5F; }
-    // Coordenada del techo del tablero.
+    // Coordenada del techo, por donde reaparecen.
     float ceilingY() const { return boardHeight * 0.5F; }
-    // Semiancho del tablero.
-    float halfWidth() const { return boardWidth * 0.5F; }
-    // Semiprofundidad del tablero.
-    float halfDepth() const { return boardDepth * 0.5F; }
+    // Radio maximo que puede alcanzar el centro de una pelota.
+    float usableRadius(float ballRadiusValue) const { return boardRadius - ballRadiusValue; }
+    // Radio del anillo mas ancho de la piramide.
+    float pyramidRadius() const { return boardRadius * 0.62F; }
 };
 
 // Configuracion completa de la aplicacion.
@@ -65,6 +64,9 @@ struct AppConfig {
     int windowHeight = 720;               // Alto del lienzo en pixeles (minimo 480).
     int threadCount  = 0;                 // 0 = usar todos los nucleos disponibles.
     bool vsync       = true;              // Sincroniza el intercambio de buffers.
+    bool fullscreen  = true;              // Abre a pantalla completa; --windowed lo desactiva.
+    float rotationSpeed = 11.0F;          // Grados por segundo que gira la camara.
+    float cameraPitch   = 12.0F;          // Inclinacion de la camara sobre la horizontal.
     bool showHelp    = false;             // Solicito la ayuda y no debe simularse.
     bool runBenchmark = false;            // Ejecuta el banco de pruebas sin ventana.
     bool allowPrompt = true;              // Permite pedir datos por consola si faltan.

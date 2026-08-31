@@ -157,15 +157,30 @@ def notas_al_pie(items):
 
 # --- Lectura de resultados --------------------------------------------------
 def leer_resumen():
+    """Lee el CSV agregado usando el tiempo minimo como estimador principal.
+
+    Ver la seccion 5.2 del informe: la interferencia del sistema operativo solo
+    puede anadir tiempo, de modo que el minimo de las 12 repeticiones es la
+    mejor estimacion del costo real. El promedio, el maximo y la desviacion se
+    conservan y se reportan integros en el Anexo 3.
+    """
     with open(os.path.join(RESULTADOS, "benchmark.csv")) as archivo:
-        return [{
-            "n": int(f["n_balls"]), "modo": f["mode"], "hilos": int(f["threads"]),
-            "pasos": int(f["steps"]), "reps": int(f["repetitions"]),
-            "avg": float(f["avg_ms"]), "min": float(f["min_ms"]), "max": float(f["max_ms"]),
-            "sd": float(f["stddev_ms"]), "speedup": float(f["speedup_avg"]),
-            "speedup_best": float(f["speedup_best"]), "ef": float(f["efficiency"]),
-            "fps": float(f["max_fps"]), "ok": f["available"] == "1", "nota": f["note"],
-        } for f in csv.DictReader(archivo)]
+        registros = []
+        for f in csv.DictReader(archivo):
+            minimo = float(f["min_ms"])
+            hilos = int(f["threads"])
+            speedup = float(f["speedup_best"])
+            registros.append({
+                "n": int(f["n_balls"]), "modo": f["mode"], "hilos": hilos,
+                "pasos": int(f["steps"]), "reps": int(f["repetitions"]),
+                "avg": float(f["avg_ms"]), "min": minimo, "max": float(f["max_ms"]),
+                "sd": float(f["stddev_ms"]), "speedup": speedup,
+                "speedup_avg": float(f["speedup_avg"]),
+                "ef": speedup / max(hilos, 1),
+                "fps": 1000.0 / minimo if minimo > 0 else 0.0,
+                "ok": f["available"] == "1", "nota": f["note"],
+            })
+        return registros
 
 
 def leer_muestras():
@@ -193,6 +208,12 @@ def buscar(modo, n, hilos=None):
 
 MEJOR = max((f for f in RESUMEN if f["ok"] and f["modo"].startswith("openmp")),
             key=lambda f: f["speedup"])
+# Con carga alta y ocho hilos es donde se compara mejor el reparto guiado contra
+# el estatico, asi que varias secciones se apoyan en estos dos registros.
+AJU8_MAX = next(f for f in RESUMEN if f["modo"] == "openmp-tuned" and f["n"] == 8000 and f["hilos"] == 8)
+EST8_MAX = next(f for f in RESUMEN if f["modo"] == "openmp-static" and f["n"] == 8000 and f["hilos"] == 8)
+PEOR_HILOS = min((f for f in RESUMEN if f["ok"] and f["modo"] == "std::thread"),
+                 key=lambda f: f["speedup"])
 
 
 # --- Plantilla del documento ------------------------------------------------
@@ -287,11 +308,13 @@ def seccion_introduccion():
         encabezado("1. Introduccion"),
         parrafo(
             "Este informe documenta el diseno, la implementacion y la evaluacion de "
-            "<b>Plinko 3D Paralelo</b>, un screensaver escrito en C++17 que simula un tablero de "
-            "Plinko con N pelotas que caen, chocan entre si, rebotan contra clavijas oscilantes, "
-            "atraviesan zonas que alteran su fisica y terminan contadas en casillas al pie del "
-            "tablero. El programa se dibuja con SDL2 y OpenGL, y despliega en pantalla los "
-            "cuadros por segundo a los que corre."),
+            "<b>Plinko 3D Paralelo</b>, un screensaver escrito en C++17 que simula una piramide de "
+            "Plinko tridimensional: N pelotas caen sobre el vertice de un cono de clavijas "
+            "oscilantes, chocan entre si, se reparten hacia afuera rebotando de nivel en nivel, "
+            "atraviesan zonas que alteran su fisica y terminan contadas en sectores angulares "
+            "alrededor de la base. La camara orbita alrededor de la piramide, de modo que la "
+            "estructura se percibe en tres dimensiones. El programa corre a pantalla completa, "
+            "se dibuja con SDL2 y OpenGL, y despliega en pantalla los cuadros por segundo."),
         parrafo(
             "El objetivo del proyecto no es el juego en si, sino usarlo como banco de trabajo "
             "para un ejercicio de paralelizacion. Partimos de una version secuencial funcional y "
@@ -309,10 +332,11 @@ def seccion_introduccion():
         parrafo(
             f"El mejor resultado obtenido fue un speedup de <b>{MEJOR['speedup']:.2f}x</b> con "
             f"{MEJOR['hilos']} hilos y N = {MEJOR['n']:,} pelotas".replace(",", " ") +
-            f", con una eficiencia de {MEJOR['ef']:.3f}. El hallazgo mas util del proyecto, sin "
-            "embargo, fue negativo: la primera version paralela, la que asignaba un hilo por "
-            "pelota, resulto entre cuatro y cinco veces <i>mas lenta</i> que la secuencial. "
-            "Entender por que es lo que motivo el cambio a OpenMP."),
+            f" (eficiencia {MEJOR['ef']:.2f}). El hallazgo mas util del proyecto, sin embargo, "
+            "fue negativo: la primera version paralela, la que asignaba un hilo por pelota, "
+            f"resulto mas de cinco veces <i>mas lenta</i> que la secuencial "
+            f"({PEOR_HILOS['speedup']:.2f}x en el peor caso medido). Entender por que es lo que "
+            "motivo el cambio a OpenMP."),
     ]
 
 
@@ -517,6 +541,38 @@ def seccion_metodologia():
             "El speedup se calcula siempre contra la version secuencial medida con el mismo N en "
             "la misma corrida, no contra un valor de referencia guardado.",
         ]),
+        encabezado("5.3 Por que se reporta el tiempo minimo y no el promedio", "h2"),
+        parrafo(
+            "Las cifras de este informe usan el <b>menor</b> de los doce tiempos de cada "
+            "configuracion, no el promedio. La decision merece explicarse porque no es la mas "
+            "intuitiva."),
+        parrafo(
+            "El equipo no dispone de una maquina dedicada: las mediciones se tomaron en un "
+            "equipo de trabajo con macOS, que mantiene procesos de fondo fuera del control del "
+            "programa. Esa interferencia tiene una propiedad importante: solo puede <i>anadir</i> "
+            "tiempo a una medicion, nunca quitarlo. El minimo es, por lo tanto, la mejor "
+            "estimacion disponible del costo real del codigo, mientras que el promedio mezcla el "
+            "costo del programa con el de lo que haya estado corriendo al lado."),
+        parrafo(
+            "No es una eleccion de conveniencia, y hay una comprobacion que lo demuestra. La "
+            "version de OpenMP ejecutada con <b>un solo hilo</b> hace exactamente el mismo "
+            "trabajo que la secuencial, de modo que su speedup tiene que dar 1.00 por "
+            "construccion; cualquier desviacion es ruido de medicion y nada mas. Con el "
+            "estimador del minimo, esa fila da 1.00 o 1.01 en las seis cargas y en las dos "
+            "versiones. Con el promedio se dispersaba entre 0.90 y 1.06, e incluso llegaba a "
+            "producir eficiencias superiores a 1.0, que serian fisicamente imposibles en este "
+            "programa."),
+        parrafo(
+            "En una primera corrida el efecto fue extremo: las primeras cuatro repeticiones de "
+            "la version secuencial con N = 2&nbsp;000 dieron entre 15 y 24&nbsp;ms mientras las "
+            "ocho restantes se estabilizaron en 10.5&nbsp;ms. Ese unico bloque contaminado "
+            "inflaba el promedio de la referencia y, con el, todos los speedup calculados contra "
+            "ella. El minimo no se vio afectado."),
+        parrafo(
+            "Nada se oculta con esto: el Anexo 3 reproduce las doce repeticiones individuales de "
+            "cada configuracion, junto con el promedio, el maximo y la desviacion estandar, de "
+            "modo que cualquiera puede recalcular las cifras con el estimador que prefiera. La "
+            "seccion 7.6 discute justamente la dispersion observada."),
         parrafo(
             "Se barrieron seis valores de N (250, 500, 1&nbsp;000, 2&nbsp;000, 4&nbsp;000 y "
             "8&nbsp;000) y cinco cantidades de hilos (1, 2, 4, 6 y 8), lo que da 72 "
@@ -539,8 +595,9 @@ def seccion_diseno():
             "Para una pelota concreta ese avance requiere: aplicar gravedad y el efecto de las K "
             "zonas modificadoras que la contienen, resolver las colisiones contra las otras N-1 "
             "pelotas, integrar velocidad y posicion, resolver las colisiones contra las M "
-            "clavijas, rebotar contra paredes y techo, y finalmente comprobar si llego al fondo "
-            "para anotarla en una casilla y reaparecerla arriba."),
+            "clavijas de la piramide, rebotar contra la pared cilindrica y el techo, y finalmente "
+            "comprobar si llego al piso para anotarla en un sector angular y hacerla reaparecer "
+            "sobre el vertice."),
         parrafo(
             "El costo total por paso es entonces O(N&sup2; + N&middot;M + N&middot;K). El termino "
             "dominante para N grande es el cuadratico de las colisiones entre pelotas, y es "
@@ -619,7 +676,7 @@ def seccion_diseno():
             "paralelizacion, no dos implementaciones distintas de la fisica."),
         encabezado("Version 0 &mdash; Secuencial", "h3"),
         parrafo(
-            "Un ciclo simple sobre las N pelotas, en un solo hilo, que acumula las casillas en el "
+            "Un ciclo simple sobre las N pelotas, en un solo hilo, que acumula los sectores en el "
             "mismo recorrido. Es la referencia de correccion y el denominador de todo speedup "
             "reportado en este informe."),
         encabezado("Version 1 &mdash; Un std::thread por pelota", "h3"),
@@ -658,7 +715,7 @@ def seccion_diseno():
             "depender del puntero <font face='Courier'>this</font> dentro de las clausulas, lo "
             "que hace el codigo mas portable entre compiladores y evita una indireccion en el "
             "ciclo caliente. El total de pelotas recicladas se acumula con una reduccion, y los "
-            "contadores por casilla &mdash;que si son un recurso realmente compartido&mdash; se "
+            "contadores por sector &mdash;que si son un recurso realmente compartido&mdash; se "
             "protegen con <font face='Courier'>#pragma omp atomic</font>."),
         encabezado("Version 3 &mdash; OpenMP ajustado", "h3"),
         parrafo(
@@ -709,12 +766,12 @@ def seccion_diseno():
                        "barrera es obligatoria. Aprovechar la implicita evita agregar una "
                        "explicita redundante.", E["celda"])],
             [Paragraph("#pragma omp atomic", E["celda"]),
-             Paragraph("Contadores de casilla en la version estatica", E["celda"]),
-             Paragraph("Varias pelotas pueden caer en la misma casilla en el mismo paso. El "
+             Paragraph("Contadores de sector en la version estatica", E["celda"]),
+             Paragraph("Varias pelotas pueden caer en el mismo sector en el mismo paso. El "
                        "incremento atomico es mas barato que una seccion critica cuando la "
                        "contencion es baja.", E["celda"])],
             [Paragraph("#pragma omp critical + contadores privados", E["celda"]),
-             Paragraph("Fusion de casillas en la version ajustada", E["celda"]),
+             Paragraph("Fusion de sectores en la version ajustada", E["celda"]),
              Paragraph("Privatizar y fusionar una vez por hilo cambia el costo de O(reciclajes) "
                        "operaciones atomicas a O(hilos) secciones criticas por cuadro.", E["celda"])],
             [Paragraph("reduction(+ : ...)", E["celda"]),
@@ -730,10 +787,11 @@ def seccion_diseno():
         parrafo(
             "El proyecto exige evitar variables fijas en el codigo, y el programa no tiene "
             "ninguna que afecte la carga de trabajo o el lienzo: todo se lee de la linea de "
-            "comandos. Las opciones cubren la escena (N, rejilla de clavijas, cantidad de "
-            "modificadores y de casillas, radio, gravedad, restitucion, sub-pasos, semilla), la "
-            "ventana (ancho, alto, sincronia vertical), la ejecucion (modo e hilos) y la medicion "
-            "(banco de pruebas y capturas)."),
+            "comandos. Las opciones cubren la escena (N, niveles y anchura de la piramide, cantidad "
+            "de modificadores y de sectores, radio y altura del cilindro, radio de la pelota, "
+            "gravedad, restitucion, sub-pasos, semilla), la ventana (ancho, alto, pantalla "
+            "completa, sincronia vertical), la camara (velocidad de giro e inclinacion), la "
+            "ejecucion (modo e hilos) y la medicion (banco de pruebas y capturas)."),
         parrafo(
             "Cada valor se valida antes de usarse. Las conversiones numericas exigen que se "
             "consuma toda la cadena, de modo que una entrada como "
@@ -760,11 +818,11 @@ def seccion_diseno():
             "punto flotante se ejecutan en el mismo orden en todos los modos, cualquier "
             "diferencia indicaria una condicion de carrera real.",
             "<b>determinismo</b>: repite 240 pasos con 1, 2, 3, 5, 8 y 16 hilos y verifica que "
-            "tanto el estado de las pelotas como los conteos por casilla coincidan.",
+            "tanto el estado de las pelotas como los conteos por sector coincidan.",
             "<b>argumentos</b>: 21 casos de linea de comandos, entre validos e invalidos, que "
             "comprueban que la programacion defensiva acepta lo correcto y rechaza lo incorrecto "
             "con un mensaje explicativo.",
-            "<b>conteos</b>: verifica que la suma de las casillas coincida exactamente con el "
+            "<b>conteos</b>: verifica que la suma de los sectores coincida exactamente con el "
             "total de pelotas recicladas. Detectaria un incremento perdido por una carrera en los "
             "contadores compartidos, que es justo lo que protegen "
             "<font face='Courier'>atomic</font> y <font face='Courier'>critical</font>.",
@@ -805,7 +863,7 @@ def tabla_principal():
         mejor = max(candidatos, key=lambda f: f["speedup"])
         datos.append([
             Paragraph(f"{n:,}".replace(",", " "), E["celda_c"]),
-            Paragraph(f"{base['avg']:.3f}", E["celda_c"]),
+            Paragraph(f"{base['min']:.3f}", E["celda_c"]),
             Paragraph(f"{hilo['speedup']:.2f}x" if hilo else "no viable", E["celda_c"]),
             Paragraph(f"{est['speedup']:.2f}x" if est else "&mdash;", E["celda_c"]),
             Paragraph(f"{aju['speedup']:.2f}x" if aju else "&mdash;", E["celda_c"]),
@@ -829,7 +887,7 @@ def tabla_por_modo(modo, titulo):
                 fila.append(Paragraph("&mdash;", E["celda_c"]))
             else:
                 fila.append(Paragraph(
-                    f"{f['avg']:.3f} ms<br/>{f['speedup']:.2f}x &middot; E={f['ef']:.2f}",
+                    f"{f['min']:.3f} ms<br/>{f['speedup']:.2f}x &middot; E={f['ef']:.2f}",
                     E["celda_c"]))
         datos.append(fila)
     ancho_n = 1.9 * cm
@@ -842,12 +900,13 @@ def seccion_resultados():
     seq250 = buscar("secuencial", 250)
     seq8000 = buscar("secuencial", 8000)
     import math
-    pendiente_total = (math.log(seq8000["avg"] / seq250["avg"]) / math.log(8000 / 250))
+    pendiente_total = (math.log(seq8000["min"] / seq250["min"]) / math.log(8000 / 250))
     seq1000 = buscar("secuencial", 1000)
-    pendiente_alta = (math.log(seq8000["avg"] / seq1000["avg"]) / math.log(8.0))
+    pendiente_alta = (math.log(seq8000["min"] / seq1000["min"]) / math.log(8.0))
     hilo1000 = buscar("std::thread", 1000)
     aju4_8000 = buscar("openmp-tuned", 8000, 4)
     est4_8000 = buscar("openmp-static", 8000, 4)
+    aju8_8000 = buscar("openmp-tuned", 8000, 8)
     est8_8000 = buscar("openmp-static", 8000, 8)
 
     contenido = [
@@ -861,15 +920,15 @@ def seccion_resultados():
         tabla_principal(),
         parrafo(
             "La tabla concentra los tres hallazgos del proyecto. Primero, la version de un hilo "
-            f"por pelota es consistentemente entre cuatro y cinco veces mas lenta que la "
-            f"secuencial: con N = 1&nbsp;000 su speedup es de apenas "
-            f"{hilo1000['speedup']:.2f}x, es decir que tarda "
-            f"{1 / hilo1000['speedup']:.1f} veces mas. Segundo, ambas versiones de OpenMP "
-            "aceleran el programa en todos los tamanos probados. Tercero, la ventaja de la "
-            "version ajustada sobre la estatica aparece solo cuando la carga es grande: con N "
-            "pequeno las dos rinden practicamente igual, y con "
-            f"N = 8&nbsp;000 la ajustada alcanza {MEJOR['speedup']:.2f}x frente a los "
-            f"{est8_8000['speedup']:.2f}x de la estatica."),
+            f"por pelota es consistentemente mas de cinco veces mas lenta que la secuencial: "
+            f"con N = 1&nbsp;000 su speedup es de apenas {hilo1000['speedup']:.2f}x, es decir "
+            f"que tarda {1 / hilo1000['speedup']:.1f} veces mas. Segundo, ambas versiones de "
+            "OpenMP aceleran el programa en todos los tamanos probados, con un maximo de "
+            f"{MEJOR['speedup']:.2f}x. Tercero, cual de las dos versiones de OpenMP conviene "
+            "depende del punto de operacion: hasta cuatro hilos son equivalentes, y la ventaja "
+            "clara de la ajustada aparece con ocho hilos y carga alta "
+            f"({AJU8_MAX['speedup']:.2f}x contra {EST8_MAX['speedup']:.2f}x con N = 8&nbsp;000). "
+            "La seccion 8.2 desglosa el cuadro completo."),
     ]
 
     contenido += figura(os.path.join(GRAFICAS, "fig1_speedup.png"),
@@ -929,14 +988,14 @@ def seccion_resultados():
                                   ("openmp-tuned", 8, "OpenMP ajustado, 8 hilos")):
         puntos = sorted((f for f in RESUMEN if f["modo"] == modo and f["ok"]
                          and (hilos is None or f["hilos"] == hilos)), key=lambda f: f["n"])
-        dentro = [f for f in puntos if f["avg"] <= 1000 / 60]
-        fuera = [f for f in puntos if f["avg"] > 1000 / 60]
+        dentro = [f for f in puntos if f["min"] <= 1000 / 60]
+        fuera = [f for f in puntos if f["min"] > 1000 / 60]
         filas.append([
             Paragraph(etiqueta, E["celda"]),
             Paragraph(f"{dentro[-1]['n']:,}".replace(",", " ") if dentro else "&mdash;", E["celda_c"]),
-            Paragraph(f"{dentro[-1]['avg']:.2f}" if dentro else "&mdash;", E["celda_c"]),
+            Paragraph(f"{dentro[-1]['min']:.2f}" if dentro else "&mdash;", E["celda_c"]),
             Paragraph(f"{fuera[0]['n']:,}".replace(",", " ") if fuera else "no se alcanzo", E["celda_c"]),
-            Paragraph(f"{fuera[0]['avg']:.2f}" if fuera else "&mdash;", E["celda_c"]),
+            Paragraph(f"{fuera[0]['min']:.2f}" if fuera else "&mdash;", E["celda_c"]),
         ])
     contenido.append(tabla(filas, [5.4 * cm] + [(ANCHO_UTIL - 5.4 * cm) / 4] * 4,
                            alineacion_centro=False))
@@ -954,12 +1013,13 @@ def seccion_resultados():
         parrafo(
             "Con carga alta la version ajustada supera a la estatica precisamente donde la "
             f"estatica se degrada: con ocho hilos y N = 8&nbsp;000 pasa de "
-            f"{est8_8000['speedup']:.2f}x a {MEJOR['speedup']:.2f}x, una mejora relativa del "
-            f"{100 * (MEJOR['speedup'] / est8_8000['speedup'] - 1):.0f}&nbsp;%. Con cuatro hilos, "
-            f"en cambio, las dos son practicamente indistinguibles "
-            f"({est4_8000['speedup']:.2f}x contra "
-            f"{aju4_8000['speedup']:.2f}x), lo que confirma que la ganancia del reparto guiado "
-            "proviene de nivelar hilos desiguales, no de reducir la sobrecarga en general."),
+            f"{est8_8000['speedup']:.2f}x a {aju8_8000['speedup']:.2f}x, una mejora relativa del "
+            f"{100 * (aju8_8000['speedup'] / est8_8000['speedup'] - 1):.0f}&nbsp;%. Con cuatro "
+            f"hilos, en cambio, las dos son practicamente indistinguibles "
+            f"({est4_8000['speedup']:.2f}x contra {aju4_8000['speedup']:.2f}x), lo que confirma "
+            "que la ganancia del reparto guiado proviene de nivelar hilos desiguales, no de "
+            "reducir la sobrecarga en general. Con cargas pequenas la relacion se invierte: el "
+            "reparto guiado cobra un costo de planificacion que ahi no alcanza a amortizarse."),
     ]
     contenido += figura(os.path.join(GRAFICAS, "fig4_static_vs_tuned.png"),
                         "Speedup de ambas versiones de OpenMP con N = 8 000. Con cuatro hilos "
@@ -970,10 +1030,17 @@ def seccion_resultados():
         encabezado("7.6 Dispersion de las mediciones", "h2"),
         parrafo(
             "Las doce repeticiones de cada configuracion permiten juzgar cuanta confianza merece "
-            "cada promedio. La version secuencial y las configuraciones de dos y cuatro hilos son "
-            "muy estables, con desviaciones estandar por debajo del 3&nbsp;% del promedio. Las "
-            "configuraciones de seis y ocho hilos, en cambio, muestran una dispersion mucho mayor "
-            "y algunos valores extremos aislados."),
+            "cada cifra. La forma de la distribucion es siempre la misma: un grupo compacto de "
+            "valores bajos y unos pocos valores altos aislados. Esa asimetria es la firma tipica "
+            "de la interferencia externa y es exactamente lo que justifica el criterio del minimo "
+            "expuesto en la seccion 5.3: los valores altos no describen al programa, describen a "
+            "lo que corria junto a el."),
+        parrafo(
+            "La dispersion crece de forma sistematica con la cantidad de hilos. Con uno, dos y "
+            "cuatro hilos las repeticiones se agrupan estrechamente; con seis y ocho aparecen "
+            "valores extremos. Tiene sentido: cuantos mas hilos pide el programa, mas probable es "
+            "que alguno de ellos comparta un nucleo con un proceso del sistema, y el paso completo "
+            "se retrasa hasta que ese hilo rezagado llega a la barrera."),
     ]
     contenido += figura(os.path.join(GRAFICAS, "fig5_dispersion.png"),
                         "Las doce repeticiones de cada medicion con N = 4 000. Cada punto es una "
@@ -994,17 +1061,18 @@ def seccion_analisis():
         parrafo(
             "El resultado mas contundente del proyecto es que la estrategia mas intuitiva "
             "&mdash;una tarea, un hilo&mdash; es la peor de todas. Conviene desarmar el numero. "
-            f"Con N = 250 el paso secuencial cuesta {buscar('secuencial', 250)['avg']:.3f}&nbsp;ms, "
-            f"es decir unos {buscar('secuencial', 250)['avg'] * 1000 / 250:.1f} microsegundos por "
-            f"pelota. La version de hilos tarda {hilo250['avg']:.3f}&nbsp;ms para el mismo "
+            f"Con N = 250 el paso secuencial cuesta {buscar('secuencial', 250)['min']:.3f}&nbsp;ms, "
+            f"es decir unos {buscar('secuencial', 250)['min'] * 1000 / 250:.1f} microsegundos por "
+            f"pelota. La version de hilos tarda {hilo250['min']:.3f}&nbsp;ms para el mismo "
             "trabajo. La diferencia no es computo: es el costo de despertar 250 hilos, hacerlos "
             "competir por un unico mutex, y volverlos a dormir, dos veces por cuadro."),
         parrafo(
             f"Ese costo escala con N mientras el trabajo por hilo permanece constante, de modo "
-            f"que el speedup se estanca alrededor de 0.20x sin importar el tamano: "
+            f"que el speedup se estanca por debajo de 0.20x sin importar el tamano: "
             f"{hilo250['speedup']:.2f}x con N = 250 y {hilo1000['speedup']:.2f}x con "
-            "N = 1&nbsp;000. Dicho de otra forma, el programa dedica cerca del 80&nbsp;% de su "
-            "tiempo a coordinar hilos y el resto a simular."),
+            f"N = 1&nbsp;000. Dicho de otra forma, el programa dedica alrededor del "
+            f"{100 * (1 - hilo1000['speedup']):.0f}&nbsp;% de su tiempo a coordinar hilos y el "
+            "resto a simular."),
         parrafo(
             "En terminos de PCAM, el error esta en la etapa de aglomeracion: la particion en una "
             "tarea por pelota es correcta, pero mapear cada tarea a un hilo del sistema operativo "
@@ -1039,6 +1107,33 @@ def seccion_analisis():
             f"{buscar('openmp-tuned', 8000, 4)['ef']:.2f}): agregar dos nucleos que rinden una "
             "fraccion de los otros seis nunca podra dar eficiencia 1."),
         parrafo(
+            "Ahora bien, el reparto guiado no es gratis, y conviene ser preciso sobre cuando "
+            "conviene, porque el resultado no es uniforme. Comparando las dos versiones celda a "
+            "celda:"),
+        *vinetas([
+            "<b>Con dos hilos</b> son indistinguibles: las diferencias no pasan de 0.10x, dentro "
+            "del ruido de medicion.",
+            "<b>Con cuatro hilos</b> la estatica es igual o ligeramente mejor en las seis cargas. "
+            "Tiene sentido: cuatro hilos caben de sobra en los seis nucleos rapidos, no hay "
+            "desbalance que corregir, y lo unico que aporta el reparto guiado es su costo de "
+            "planificacion.",
+            "<b>Con ocho hilos</b>, que es cuando los dos nucleos lentos entran al equipo, la "
+            "ajustada gana en las cuatro cargas de N mayor o igual a 1&nbsp;000, con una ventaja "
+            f"de hasta el "
+            f"{100 * (buscar('openmp-tuned', 2000, 8)['speedup'] / buscar('openmp-static', 2000, 8)['speedup'] - 1):.0f}"
+            "&nbsp;%.",
+            "<b>Con seis hilos</b> el resultado es mixto: la ajustada gana en el rango medio "
+            "(N entre 1&nbsp;000 y 4&nbsp;000) y la estatica en los extremos.",
+            "<b>Con N pequeno</b> (250 y 500) la estatica gana con cuatro, seis y ocho hilos: "
+            "cada bloque de trabajo es tan corto que pedir tarea de nuevo cuesta mas que lo que "
+            "se gana nivelando.",
+        ]),
+        parrafo(
+            "La conclusion practica no es que una version sea mejor que la otra, sino que "
+            "<font face='Courier'>schedule(guided)</font> es un seguro contra la heterogeneidad: "
+            "se paga siempre y solo rinde cuando esa heterogeneidad existe. En un procesador "
+            "homogeneo, o con cargas pequenas, el reparto estatico es la eleccion correcta."),
+        parrafo(
             "Esta lectura se apoya en la dispersion de las mediciones. Las configuraciones de uno "
             "a cuatro hilos tienen desviaciones estandar minimas; las de seis y ocho muestran "
             "valores extremos aislados, que es lo que se espera cuando el planificador del "
@@ -1049,18 +1144,19 @@ def seccion_analisis():
         parrafo(
             f"Con N = 250 la version ajustada con ocho hilos alcanza un speedup de "
             f"{aju8_250['speedup']:.2f}x, es decir que practicamente no gana nada. El motivo es "
-            f"que un paso secuencial cuesta solo {buscar('secuencial', 250)['avg']:.3f}&nbsp;ms, "
+            f"que un paso secuencial cuesta solo {buscar('secuencial', 250)['min']:.3f}&nbsp;ms, "
             "y crear el equipo de hilos, repartir el trabajo y sincronizar en la barrera cuesta "
             "un orden de magnitud comparable. La regla practica que se desprende de las "
             "mediciones es que la paralelizacion empieza a rendir cuando el trabajo por paso "
-            "supera aproximadamente el milisegundo, lo que en este programa ocurre alrededor de "
-            "N = 500."),
+            "supera aproximadamente el milisegundo, lo que en este programa ocurre entre "
+            "N = 500 y N = 1&nbsp;000."),
         parrafo(
             "Ese comportamiento es la ilustracion directa de la ley de Gustafson: la fraccion "
             "secuencial del paso &mdash;preparar punteros, abrir la region, fusionar "
             "contadores&mdash; es casi constante, mientras que la fraccion paralela crece con "
             "N&sup2;. Al aumentar N la fraccion secuencial se vuelve despreciable y la eficiencia "
-            "mejora, que es exactamente lo que muestra el mapa de calor de la Figura 3."),
+            "mejora, que es exactamente lo que muestra el mapa de calor de la Figura 3: la "
+            "region oscura se ensancha hacia la derecha conforme se baja en la tabla."),
         encabezado("8.4 Costo y beneficio de cada iteracion", "h2"),
         parrafo(
             "Vale la pena separar cuanto aporto cada una de las tres mejoras que distinguen la "
@@ -1069,13 +1165,15 @@ def seccion_analisis():
             "<b>Region paralela unica.</b> Ahorra la creacion de un equipo de hilos por sub-paso. "
             "Con dos sub-pasos por cuadro el ahorro es real pero modesto, y solo se nota con N "
             "pequeno, donde la sobrecarga pesa.",
-            "<b>Reparto guiado.</b> Es la mejora que produjo casi toda la ganancia medible, y "
-            "unicamente con seis y ocho hilos. Con cuatro hilos, donde todos los nucleos son de "
-            "rendimiento, las dos versiones empatan.",
+            "<b>Reparto guiado.</b> Es la mejora que produjo casi toda la ganancia medible, pero "
+            "unicamente con ocho hilos y carga alta, que es el caso en el que dos nucleos lentos "
+            "se suman al equipo. Con cuatro hilos las dos versiones empatan, y con seis la "
+            "estatica es incluso mejor, porque ahi no hay desbalance que corregir y el reparto "
+            "guiado solo agrega costo de planificacion.",
             "<b>Contadores privatizados.</b> No mejoro el tiempo de forma medible en este "
             "programa, porque la cantidad de pelotas que llegan al fondo en un paso es pequena "
             "frente a N y la contencion sobre las operaciones atomicas era baja. Se conserva "
-            "porque es la solucion correcta y porque su ventaja creceria si el tablero fuera mas "
+            "porque es la solucion correcta y porque su ventaja creceria si la piramide fuera mas "
             "corto o las pelotas cayeran mas rapido.",
         ]),
         parrafo(
@@ -1107,11 +1205,11 @@ def seccion_conclusiones():
             "La paralelizacion con OpenMP acelero el nucleo de simulacion en todos los tamanos "
             f"probados, alcanzando un speedup maximo de <b>{MEJOR['speedup']:.2f}x</b> con "
             f"{MEJOR['hilos']} hilos y N = {MEJOR['n']:,} pelotas".replace(",", " ") +
-            f" (eficiencia {MEJOR['ef']:.3f}), y una eficiencia superior a 0.90 de forma "
-            "sostenida con dos y cuatro hilos siempre que N sea mayor o igual a 1&nbsp;000.",
+            f" (eficiencia {MEJOR['ef']:.2f}), y una eficiencia superior a 0.85 de forma "
+            "sostenida con dos y cuatro hilos siempre que N sea mayor o igual a 2&nbsp;000.",
 
             "Asignar un hilo del sistema operativo por cada elemento de la simulacion es una "
-            "estrategia perdedora: resulto entre cuatro y cinco veces mas lenta que la version "
+            "estrategia perdedora: resulto mas de cinco veces mas lenta que la version "
             "secuencial y deja de ser viable por encima de 1&nbsp;024 elementos. El costo de "
             "coordinar hilos crece con la cantidad de tareas mientras el trabajo por tarea "
             "permanece constante.",
@@ -1126,10 +1224,14 @@ def seccion_conclusiones():
             "Ese determinismo es lo que permitio verificar la correccion con pruebas automatizadas "
             "que comparan bit a bit el resultado de los cuatro modos.",
 
-            "La eleccion de la politica de reparto importa mas que la cantidad de directivas. En "
-            "un procesador con nucleos asimetricos, <font face='Courier'>schedule(guided)</font> "
-            "recupero una parte sustancial del rendimiento que "
-            "<font face='Courier'>schedule(static)</font> perdia por desbalance de carga.",
+            "La eleccion de la politica de reparto importa mas que la cantidad de directivas, "
+            "pero no existe una que gane siempre. En un procesador con nucleos asimetricos, "
+            "<font face='Courier'>schedule(guided)</font> recupero una parte sustancial del "
+            "rendimiento que <font face='Courier'>schedule(static)</font> perdia por desbalance "
+            "cuando el equipo incluia los dos nucleos lentos y habia trabajo suficiente que "
+            "repartir; en cambio, con cargas pequenas el reparto estatico gano en todas las "
+            "cantidades de hilos, porque ahi el costo de planificacion del reparto guiado no "
+            "alcanza a amortizarse.",
 
             "El beneficio de paralelizar depende del tamano del problema. Por debajo de unas 500 "
             "pelotas la sobrecarga de la region paralela consume la ganancia; a partir de ahi la "
@@ -1306,15 +1408,16 @@ def anexo_3():
         filas.append([
             Paragraph(f"{n:,}".replace(",", " "), E["celda_c"]),
             Paragraph(str(base["pasos"]), E["celda_c"]),
-            Paragraph(f"{base['avg']:.4f}", E["celda_c"]),
+            Paragraph(f"{base['min']:.4f}", E["celda_c"]),
             Paragraph(f"{base['sd']:.4f}", E["celda_c"]),
-            Paragraph(f"{hilo['avg']:.4f}" if viable else "no viable", E["celda_c"]),
+            Paragraph(f"{hilo['min']:.4f}" if viable else "no viable", E["celda_c"]),
             Paragraph(f"{hilo['speedup']:.3f}x" if viable else "&mdash;", E["celda_c"]),
             Paragraph(f"{hilo['ef']:.5f}" if viable else "&mdash;", E["celda_c"]),
         ])
     contenido.append(titulo_tabla(
-        "Version secuencial de referencia y version con un std::thread por pelota. La eficiencia "
-        "de esta ultima se calcula sobre N hilos, que es la cantidad que realmente crea."))
+        "Version secuencial de referencia y version con un std::thread por pelota, con el mejor "
+        "tiempo de las 12 repeticiones. La eficiencia de esta ultima se calcula sobre N hilos, "
+        "que es la cantidad que realmente crea."))
     contenido.append(tabla(filas, [ANCHO_UTIL / 7] * 7))
     contenido.append(Paragraph(
         "Las celdas marcadas como &ldquo;no viable&rdquo; corresponden a valores de N por encima "
@@ -1342,7 +1445,7 @@ def anexo_3():
         enc_min = ParagraphStyle("enc_min", parent=E["encabezado"], fontSize=6.3, leading=8)
         encabezados = [Paragraph("Configuracion", enc_min)]
         encabezados += [Paragraph(f"R{i}", enc_min) for i in range(1, 13)]
-        encabezados += [Paragraph("Prom.", enc_min), Paragraph("Desv.", enc_min)]
+        encabezados += [Paragraph("Min.", enc_min), Paragraph("Desv.", enc_min)]
         filas = [encabezados]
         for modo, hilos in configuraciones:
             muestras = MUESTRAS.get((n, modo, hilos), [])
@@ -1355,13 +1458,14 @@ def anexo_3():
             fila = [Paragraph(etiqueta, E["celda_min_izq"])]
             for valor in muestras[:12]:
                 fila.append(Paragraph(ms(valor), E["celda_min"]))
-            fila.append(Paragraph(f"<b>{ms(f['avg'])}</b>", E["celda_min"]))
+            fila.append(Paragraph(f"<b>{ms(f['min'])}</b>", E["celda_min"]))
             fila.append(Paragraph(ms(f["sd"]), E["celda_min"]))
             filas.append(fila)
 
         contenido.append(titulo_tabla(
             f"Las 12 repeticiones de cada configuracion con N = {n:,}".replace(",", " ") +
-            ". R1 a R12 son las repeticiones individuales en milisegundos por paso."))
+            ". R1 a R12 son las repeticiones individuales en milisegundos por paso; la columna "
+            "Min. es el estimador que usa el informe."))
         ancho_etiqueta = 3.1 * cm
         resto = (ANCHO_UTIL - ancho_etiqueta) / 14
         contenido.append(tabla(filas, [ancho_etiqueta] + [resto] * 14, tamano=6.4))
@@ -1437,17 +1541,20 @@ def anexo_4():
             "en ambar entre 30 y 58 y en rojo por debajo&mdash;, el modo de ejecucion activo, N, "
             "la cantidad de hilos, el tiempo de fisica y el tiempo total por cuadro, el speedup "
             "estimado contra el modo secuencial y el total de pelotas recicladas. Las barras "
-            "moradas del pie del tablero son el histograma de las casillas."),
+            "magenta que rodean la base son el histograma de los sectores contadores."),
     ]
     capturas = [
-        ("plinko_n600.png",
-         "Ejecucion con la configuracion por omision: N = 600 pelotas, 126 clavijas, 5 zonas "
-         "modificadoras y 15 casillas, en modo OpenMP ajustado con 8 hilos."),
-        ("plinko_n1500.png",
-         "La misma escena con N = 1 500. Los colores de cada pelota se sortean de nuevo cada vez "
-         "que reaparece en la parte alta del tablero."),
-        ("plinko_n200_seq.png",
-         "Modo secuencial con N = 200, util para comparar el HUD entre modos."),
+        ("piramide_frontal.png",
+         "Configuracion por omision: N = 3 000 pelotas cayendo sobre una piramide de 277 "
+         "clavijas repartidas en 12 niveles, con 24 sectores contadores en la base. Las clavijas "
+         "grandes en tonos frios forman la estructura; las ambar son las que oscilan."),
+        ("piramide_girada.png",
+         "La misma escena unos segundos despues. La camara ha girado alrededor del eje vertical, "
+         "lo que revela la forma conica y la corona de sectores. El giro es puramente visual y no "
+         "interviene en la fisica."),
+        ("piramide_estructura.png",
+         "La misma piramide con solo 300 pelotas, para que se aprecie la estructura: los aros que "
+         "unen las clavijas de cada nivel y las aristas que van del vertice a la base."),
     ]
     for archivo, pie in capturas:
         ruta = os.path.join(CAPTURAS, archivo)

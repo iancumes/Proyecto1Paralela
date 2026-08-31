@@ -133,10 +133,13 @@ std::string usageText(const char* programName) {
         "\n"
         "Opciones de la escena:\n"
         "  -n, --balls <entero>       Cantidad N de pelotas a simular (1..200000).\n"
-        "      --pegs <filas>x<cols>  Rejilla de clavijas, por ejemplo 8x11.\n"
+        "      --pegs <niv>x<anillo>  Piramide de clavijas: niveles x clavijas de la base,\n"
+        "                             por ejemplo 11x22.\n"
         "      --modifiers <entero>   Cantidad K de zonas modificadoras (0..256).\n"
         "      --bins <entero>        Casillas contadoras en la base (1..64).\n"
         "      --radius <decimal>     Radio de cada pelota (0.01..1.5).\n"
+        "      --board-radius <dec>   Radio del cilindro que contiene la escena.\n"
+        "      --board-height <dec>   Altura util de la escena.\n"
         "      --gravity <decimal>    Gravedad en unidades/s^2 (debe ser negativa).\n"
         "      --restitution <dec>    Coeficiente de restitucion (0..1).\n"
         "      --substeps <entero>    Sub-pasos de integracion por cuadro (1..16).\n"
@@ -146,7 +149,10 @@ std::string usageText(const char* programName) {
         "Opciones de la ventana:\n"
         "  -w, --width <entero>       Ancho del lienzo en pixeles (minimo 640).\n"
         "  -h, --height <entero>      Alto del lienzo en pixeles (minimo 480).\n"
+        "      --windowed             Abre en ventana en lugar de pantalla completa.\n"
         "      --no-vsync             Desactiva la sincronia vertical.\n"
+        "      --rotation <decimal>   Grados por segundo que gira la camara (0 la detiene).\n"
+        "      --pitch <decimal>      Inclinacion de la camara en grados (-80..80).\n"
         "\n"
         "Opciones de ejecucion:\n"
         "  -m, --mode <modo>          seq | threads | omp-static | omp-tuned.\n"
@@ -167,6 +173,8 @@ std::string usageText(const char* programName) {
         "\n"
         "Controles en ejecucion:\n"
         "  0/1/2/3  cambia a secuencial / std::thread / omp-static / omp-tuned\n"
+        "  F        alterna entre pantalla completa y ventana\n"
+        "  , / .    reduce o aumenta la velocidad de rotacion de la camara\n"
         "  ESPACIO  rota entre los modos disponibles\n"
         "  + / -    aumenta o reduce la cantidad de hilos de OpenMP\n"
         "  R        reinicia la escena con una semilla nueva\n"
@@ -208,9 +216,10 @@ bool parseCommandLine(int argc, char** argv, AppConfig& config, std::string& err
             if (!requireValue(value)) { return false; }
             const std::size_t separator = value.find_first_of("xX");
             if (separator == std::string::npos ||
-                !parseInteger(value.substr(0, separator), config.simulation.pegRows) ||
-                !parseInteger(value.substr(separator + 1), config.simulation.pegColumns)) {
-                errorMessage = "El formato de '--pegs' debe ser <filas>x<columnas>, por ejemplo 8x11.";
+                !parseInteger(value.substr(0, separator), config.simulation.pegLevels) ||
+                !parseInteger(value.substr(separator + 1), config.simulation.pegsPerBaseRing)) {
+                errorMessage = "El formato de '--pegs' debe ser <niveles>x<clavijas de la base>, "
+                               "por ejemplo 11x22.";
                 return false;
             }
         } else if (argument == "--modifiers") {
@@ -282,6 +291,38 @@ bool parseCommandLine(int argc, char** argv, AppConfig& config, std::string& err
             }
         } else if (argument == "--no-vsync") {
             config.vsync = false;
+        } else if (argument == "--windowed") {
+            config.fullscreen = false;
+        } else if (argument == "--fullscreen") {
+            config.fullscreen = true;
+        } else if (argument == "--rotation") {
+            std::string value;
+            if (!requireValue(value)) { return false; }
+            if (!parseFloatValue(value, config.rotationSpeed)) {
+                errorMessage = "El valor de '--rotation' debe ser un numero decimal.";
+                return false;
+            }
+        } else if (argument == "--pitch") {
+            std::string value;
+            if (!requireValue(value)) { return false; }
+            if (!parseFloatValue(value, config.cameraPitch)) {
+                errorMessage = "El valor de '--pitch' debe ser un numero decimal.";
+                return false;
+            }
+        } else if (argument == "--board-radius") {
+            std::string value;
+            if (!requireValue(value)) { return false; }
+            if (!parseFloatValue(value, config.simulation.boardRadius)) {
+                errorMessage = "El valor de '--board-radius' debe ser un numero decimal.";
+                return false;
+            }
+        } else if (argument == "--board-height") {
+            std::string value;
+            if (!requireValue(value)) { return false; }
+            if (!parseFloatValue(value, config.simulation.boardHeight)) {
+                errorMessage = "El valor de '--board-height' debe ser un numero decimal.";
+                return false;
+            }
         } else if (argument == "-m" || argument == "--mode") {
             std::string value;
             if (!requireValue(value)) { return false; }
@@ -361,9 +402,12 @@ bool validateConfig(const AppConfig& config, std::string& errorMessage) {
             std::to_string(MIN_BALLS) + " y " + std::to_string(MAX_BALLS) + ".";
         return false;
     }
-    if (simulation.pegRows < 0 || simulation.pegRows > 64 ||
-        simulation.pegColumns < 0 || simulation.pegColumns > 64) {
-        errorMessage = "La rejilla de clavijas debe tener entre 0 y 64 filas y columnas.";
+    if (simulation.pegLevels < 0 || simulation.pegLevels > 64) {
+        errorMessage = "La piramide debe tener entre 0 y 64 niveles de clavijas.";
+        return false;
+    }
+    if (simulation.pegsPerBaseRing < 0 || simulation.pegsPerBaseRing > 256) {
+        errorMessage = "El anillo base debe tener entre 0 y 256 clavijas.";
         return false;
     }
     if (simulation.modifierCount < 0 || simulation.modifierCount > 256) {
@@ -388,6 +432,25 @@ bool validateConfig(const AppConfig& config, std::string& errorMessage) {
     }
     if (simulation.restitution < 0.0F || simulation.restitution > 1.0F) {
         errorMessage = "El coeficiente de restitucion debe estar entre 0 y 1.";
+        return false;
+    }
+    // El radio del tablero debe dejar espacio a la pelota mas un margen.
+    if (!(simulation.boardRadius > simulation.ballRadius * 3.0F) || simulation.boardRadius > 200.0F) {
+        errorMessage = "El radio del tablero debe ser mayor que el triple del radio de la "
+                       "pelota y menor que 200.";
+        return false;
+    }
+    if (!(simulation.boardHeight > simulation.ballRadius * 6.0F) || simulation.boardHeight > 400.0F) {
+        errorMessage = "La altura del tablero debe ser mayor que seis veces el radio de la "
+                       "pelota y menor que 400.";
+        return false;
+    }
+    if (config.cameraPitch < -80.0F || config.cameraPitch > 80.0F) {
+        errorMessage = "La inclinacion de la camara debe estar entre -80 y 80 grados.";
+        return false;
+    }
+    if (config.rotationSpeed < -360.0F || config.rotationSpeed > 360.0F) {
+        errorMessage = "La velocidad de rotacion debe estar entre -360 y 360 grados por segundo.";
         return false;
     }
     if (config.windowWidth < MIN_WINDOW_WIDTH || config.windowHeight < MIN_WINDOW_HEIGHT) {

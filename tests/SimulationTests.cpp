@@ -25,8 +25,8 @@ namespace {
 SimulationParams testParams(int ballCount) {
     SimulationParams params;
     params.ballCount = ballCount;
-    params.pegRows = 6;
-    params.pegColumns = 9;
+    params.pegLevels = 7;
+    params.pegsPerBaseRing = 14;
     params.modifierCount = 4;
     params.binCount = 10;
     params.substeps = 2;
@@ -198,8 +198,12 @@ int testArgumentos() {
         {{"plinko3d", "--no-prompt", "--threads", "-3"}, false, "hilos negativos"},
         {{"plinko3d", "--no-prompt", "--gravity", "9.81"}, false, "gravedad positiva"},
         {{"plinko3d", "--no-prompt", "--restitution", "1.8"}, false, "restitucion mayor que uno"},
-        {{"plinko3d", "--no-prompt", "--pegs", "8"}, false, "rejilla sin separador"},
-        {{"plinko3d", "--no-prompt", "--pegs", "8x11"}, true, "rejilla valida"},
+        {{"plinko3d", "--no-prompt", "--pegs", "8"}, false, "piramide sin separador"},
+        {{"plinko3d", "--no-prompt", "--pegs", "11x22"}, true, "piramide valida"},
+        {{"plinko3d", "--no-prompt", "--board-radius", "0.05"}, false, "radio del tablero muy pequeno"},
+        {{"plinko3d", "--no-prompt", "--rotation", "900"}, false, "rotacion fuera de rango"},
+        {{"plinko3d", "--no-prompt", "--pitch", "120"}, false, "inclinacion fuera de rango"},
+        {{"plinko3d", "--no-prompt", "--rotation", "25", "--pitch", "20"}, true, "camara valida"},
         {{"plinko3d", "--no-prompt", "--substeps", "0"}, false, "sub-pasos en cero"},
         {{"plinko3d", "--no-prompt", "--radius", "0.0"}, false, "radio nulo"},
         {{"plinko3d", "--no-prompt", "--benchmark", "--bench-reps", "3"}, false,

@@ -68,9 +68,11 @@ CATALOGO = [
      "Pelota del tablero. Es la unidad de trabajo que se reparte entre hilos: el arreglo de "
      "Ball es el unico que crece con N."),
     ("include/Entities.h", "struct Peg",
-     "basePosition, color : Vec3; radius, amplitude, angularSpeed, phase : float.",
+     "basePosition, color : Vec3; radius, amplitude, angularSpeed, phase : float; "
+     "level : std::int32_t.",
      "No aplica (tipo de dato).",
-     "Clavija del tablero. Puede oscilar de forma sinusoidal para que el recorrido de las "
+     "Clavija de la piramide. El campo level indica su nivel, con 0 en el vertice, y determina "
+     "su color. Una parte de las clavijas oscila radialmente para que el recorrido de las "
      "pelotas no sea repetitivo."),
     ("include/Entities.h", "struct Modifier",
      "center, color : Vec3; radius, strength : float; kind : ModifierKind.",
@@ -80,24 +82,27 @@ CATALOGO = [
     ("include/Entities.h", "Vec3 pegPositionAt(const Peg& peg, float time)",
      "peg : const Peg& — clavija consultada; time : float — reloj de simulacion en segundos.",
      "Vec3 — centro de la clavija desplazado por su oscilacion.",
-     "Evalua la posicion de la clavija en el instante dado mediante una funcion seno. Es una "
-     "funcion pura: cualquier hilo puede llamarla a la vez sin sincronizacion."),
+     "Evalua la posicion de la clavija en el instante dado mediante una funcion seno. La "
+     "oscilacion es radial: la clavija se acerca y se aleja del eje de la piramide, y la del "
+     "vertice, que esta sobre el eje, oscila verticalmente. Es una funcion pura: cualquier "
+     "hilo puede llamarla a la vez sin sincronizacion."),
     # ----------------------------------------------------- SimulationConfig.h
     ("include/SimulationConfig.h", "enum class ExecutionMode",
      "Sequential, StdThreads, OpenMpStatic, OpenMpTuned.",
      "No aplica (tipo de dato).",
      "Identifica cual de las cuatro estrategias de actualizacion se ejecuta."),
     ("include/SimulationConfig.h", "struct SimulationParams",
-     "ballCount, pegRows, pegColumns, modifierCount, binCount, substeps : int; "
-     "ballRadius, gravity, restitution, boardWidth, boardHeight, boardDepth : float; "
+     "ballCount, pegLevels, pegsPerBaseRing, modifierCount, binCount, substeps : int; "
+     "ballRadius, gravity, restitution, boardRadius, boardHeight : float; "
      "ballInteraction : bool; seed : std::uint32_t.",
-     "floorY(), ceilingY(), halfWidth(), halfDepth() : float — limites derivados del tablero.",
+     "floorY(), ceilingY(), usableRadius(), pyramidRadius() : float — limites derivados.",
      "Agrupa todos los parametros fisicos y de escena. El banco de pruebas los reutiliza sin "
      "necesidad de abrir una ventana."),
     ("include/SimulationConfig.h", "struct AppConfig",
      "simulation : SimulationParams; mode : ExecutionMode; windowWidth, windowHeight, "
      "threadCount, benchmarkRepetitions, benchmarkSteps, screenshotWarmupFrames : int; "
-     "vsync, showHelp, runBenchmark, allowPrompt : bool; benchmarkBallCounts, "
+     "vsync, fullscreen, showHelp, runBenchmark, allowPrompt : bool; rotationSpeed, "
+     "cameraPitch : float; benchmarkBallCounts, "
      "benchmarkThreadCounts : std::vector<int>; benchmarkOutput, screenshotPath : std::string.",
      "No aplica (tipo de dato).",
      "Configuracion completa de la aplicacion tal como queda despues de leer la linea de "
@@ -134,7 +139,9 @@ CATALOGO = [
      "argc : int, argv : char** — argumentos tal como los recibe main.",
      "config : AppConfig& — configuracion resultante; errorMessage : std::string& — descripcion "
      "del primer problema. Retorno bool: true si los argumentos son validos.",
-     "Recorre argv reconociendo cada opcion, verifica que las que llevan valor lo reciban, "
+     "Recorre argv reconociendo cada opcion, incluidas las de camara (--rotation, --pitch), "
+     "ventana (--windowed) y geometria (--board-radius, --board-height), verifica que las que "
+     "llevan valor lo reciban, "
      "convierte los tipos, invoca la solicitud interactiva si falta N y termina llamando a "
      "validateConfig. Es el punto unico de entrada de la programacion defensiva."),
     ("include/SimulationConfig.h",
@@ -164,8 +171,9 @@ CATALOGO = [
      "binHit : int& — casilla alcanzada, o -1 si la pelota no llego al fondo. "
      "Retorno Ball: el nuevo estado de la pelota.",
      "NUCLEO DE LA PARALELIZACION. Aplica gravedad y zonas modificadoras O(K), colisiones "
-     "pelota-pelota O(N), integracion semi-implicita de Euler, colisiones contra clavijas O(M), "
-     "rebotes contra paredes y techo, y reaparicion al llegar al fondo. Es una funcion pura "
+     "pelota-pelota O(N), integracion semi-implicita de Euler, colisiones esfera-esfera contra "
+     "las clavijas de la piramide O(M), rebote contra la pared cilindrica y el techo, y "
+     "anotacion del sector angular alcanzado con reaparicion arriba. Es una funcion pura "
      "sobre entradas de solo lectura, de modo que varios hilos pueden ejecutarla simultaneamente "
      "sin candados y el resultado no depende del orden de ejecucion."),
     ("include/Simulation.h", "Simulation::Simulation(const SimulationParams& params)",
@@ -224,9 +232,12 @@ CATALOGO = [
     ("src/Simulation.cpp", "void Simulation::buildPegs(std::uint32_t& seedState)",
      "seedState : std::uint32_t& — generador de la escena.",
      "Llena pegs_.",
-     "Construye la rejilla triangular de clavijas: las filas impares se desplazan medio paso, "
-     "como en un tablero Plinko clasico. Alrededor del 35 % de las clavijas recibe amplitud de "
-     "oscilacion y se pinta en violeta; el resto queda fija y se pinta en cian."),
+     "Construye la piramide de clavijas como una pila de anillos: el nivel 0 es un vertice de "
+     "una sola clavija y cada nivel siguiente crece en radio y en cantidad, de modo que la "
+     "separacion entre clavijas vecinas se mantiene constante. Los niveles impares se giran "
+     "medio paso angular para que no queden canales rectos por los que las pelotas caigan sin "
+     "rebotar. Alrededor del 30 % de las clavijas oscila y se pinta en ambar; el resto sigue "
+     "una rampa fria de cian a azul segun el nivel."),
     ("src/Simulation.cpp", "void Simulation::buildModifiers(std::uint32_t& seedState)",
      "seedState : std::uint32_t& — generador de la escena.",
      "Llena modifiers_.",
@@ -237,7 +248,8 @@ CATALOGO = [
      "seedState : std::uint32_t& — generador de la escena.",
      "ball : Ball& — queda con semilla, radio, masa, color, posicion y velocidad.",
      "Inicializa una pelota derivando su semilla propia con mixSeed y repartiendola por toda la "
-     "altura del tablero para que la escena se vea poblada desde el primer cuadro."),
+     "altura y todo el radio del cilindro, para que la escena se vea poblada desde el primer "
+     "cuadro en lugar de arrancar con una sola columna cayendo sobre el vertice."),
     ("src/Simulation.cpp", "void Simulation::ensureStdThreads()",
      "No aplica.",
      "Crea o reemplaza stdThreads_; en caso de fallo llena stdThreadsError_.",
@@ -252,8 +264,10 @@ CATALOGO = [
     ("src/Simulation.cpp", "void respawnAtTop(Ball& ball, const SimulationParams& params)",
      "ball : Ball& — pelota reciclada; params : const SimulationParams& — limites del tablero.",
      "ball : Ball& — con posicion, velocidad y color nuevos.",
-     "Recoloca la pelota en la parte alta del tablero. Consume unicamente el generador propio de "
-     "la pelota, por lo que puede ejecutarse dentro de un ciclo paralelo sin sincronizacion."),
+     "Recoloca la pelota en un disco estrecho sobre el vertice de la piramide, con la altura "
+     "escalonada para que las pelotas recicladas no se amontonen en una columna. Consume "
+     "unicamente el generador propio de la pelota, por lo que puede ejecutarse dentro de un "
+     "ciclo paralelo sin sincronizacion."),
     ("src/Simulation.cpp", "void clampSpeed(Vec3& velocity)",
      "velocity : Vec3& — velocidad a limitar.",
      "velocity : Vec3& — con magnitud recortada al maximo permitido.",
@@ -308,11 +322,14 @@ CATALOGO = [
      "Modifica el viewport y la matriz de proyeccion.",
      "Recalcula la perspectiva cuando el usuario cambia el tamano de la ventana."),
     ("include/Renderer.h",
-     "void renderScene(const Simulation& simulation, const HudInfo& hud)",
-     "simulation : const Simulation& — estado de solo lectura; hud : const HudInfo& — cifras.",
+     "void renderScene(const Simulation& simulation, const HudInfo& hud, "
+     "const CameraState& camera)",
+     "simulation : const Simulation& — estado de solo lectura; hud : const HudInfo& — cifras; "
+     "camera : const CameraState& — orientacion de la camara.",
      "Dibuja el cuadro completo en el framebuffer activo.",
-     "Dibuja el panel de fondo, el marco tridimensional, las casillas con su histograma, las "
-     "zonas modificadoras, las clavijas, el halo aditivo, las pelotas y el HUD. Se invoca solo "
+     "Dibuja el piso, la corona de sectores con su histograma, el aro del cilindro, las aristas "
+     "y los anillos de la piramide, las zonas modificadoras, las clavijas, el halo aditivo, las "
+     "pelotas y el HUD. Coloca la camara en orbita segun el estado recibido. Se invoca solo "
      "despues de que la fisica termino y la barrera libero a todos los hilos."),
     ("include/Renderer.h",
      "void drawText(const std::string& text, float x, float y, float scale, "
@@ -332,13 +349,15 @@ CATALOGO = [
      "params : const SimulationParams& — dimensiones del tablero; aspect : float — relacion de "
      "aspecto del lienzo.",
      "float — distancia de la camara sobre el eje Z.",
-     "Calcula a que distancia colocar la camara para que el tablero completo quepa sin importar "
-     "la relacion de aspecto de la ventana."),
+     "Calcula a que distancia colocar la camara para que la piramide completa quepa sin "
+     "importar la relacion de aspecto de la ventana. Suma el radio del cilindro porque la cara "
+     "cercana avanza hacia la camara."),
     ("src/Renderer.cpp", "void emitBillboard(float x, float y, float z, float radius)",
      "x, y, z : float — centro; radius : float — semilado del cuadrilatero.",
      "Emite cuatro vertices texturizados.",
-     "Dibuja un cuadrilatero orientado a la camara. Como la camara no rota, un cuadrilatero en "
-     "el plano XY siempre queda de frente y no hace falta reconstruir la base de la vista."),
+     "Dibuja un cuadrilatero orientado a la camara, construido sobre los ejes de pantalla "
+     "llevados a coordenadas de mundo. Como la camara orbita, un cuadrilatero fijo en el plano "
+     "XY dejaria de mirarla en cuanto girara."),
     # ----------------------------------------------------------- Benchmark.h
     ("include/Benchmark.h", "struct BenchmarkRecord",
      "ballCount, threads, steps, repetitions : int; mode : ExecutionMode; averageStepMs, "
@@ -396,6 +415,40 @@ CATALOGO = [
      "mode : ExecutionMode — modo actual.",
      "ExecutionMode — siguiente modo del ciclo.",
      "Rota entre las cuatro estrategias, para poder compararlas en vivo sin reiniciar."),
+    ("include/Renderer.h", "struct CameraState",
+     "yawDegrees, pitchDegrees : float.",
+     "No aplica (tipo de dato).",
+     "Orientacion de la camara en orbita alrededor de la piramide. El giro es puramente "
+     "visual: no toca el estado de la simulacion, de modo que los tiempos de fisica y las "
+     "mediciones de speedup no se ven afectados por la animacion de la camara."),
+    ("src/Renderer.cpp", "CameraBasis cameraBasisFor(float yawDegrees, float pitchDegrees)",
+     "yawDegrees, pitchDegrees : float — angulos de la camara.",
+     "CameraBasis — ejes horizontal y vertical de la pantalla en coordenadas de mundo.",
+     "Invierte la rotacion de la vista, que es Rx(pitch) * Ry(yaw), para obtener los ejes "
+     "sobre los que se construye cada billboard. Sin esto, los cuadrilateros dejarian de "
+     "mirar a la camara en cuanto esta girara."),
+    ("src/Renderer.cpp", "GLuint createPegTexture()",
+     "No aplica.", "GLuint — identificador de la textura creada.",
+     "Genera la textura exclusiva de las clavijas: la misma esfera iluminada que las pelotas, "
+     "pero con un reborde oscuro marcado y un realce especular mucho mas tenue. Junto con el "
+     "mayor tamano, los tonos frios y la ausencia de halo, es lo que impide que una clavija se "
+     "confunda con una pelota."),
+    ("src/Renderer.cpp", "void renderPyramidRings(const std::vector<Peg>& pegs, float time)",
+     "pegs : const std::vector<Peg>& — clavijas ordenadas por nivel; time : float — reloj.",
+     "Dibuja un aro por cada nivel de la piramide.",
+     "Une con una linea las clavijas de cada nivel. Sin estos aros la estructura se lee como "
+     "una nube de esferas sueltas; con ellos la piramide escalonada se reconoce de inmediato, "
+     "incluso cuando las pelotas cubren parte de ella."),
+    ("src/Renderer.cpp", "void renderGround(const SimulationParams& params)",
+     "params : const SimulationParams& — dimensiones de la escena.",
+     "Dibuja el disco del piso y sus anillos concentricos.",
+     "El piso da la referencia de profundidad que hace evidente el giro de la camara."),
+    ("src/Renderer.cpp",
+     "void renderBins(const SimulationParams& params, const std::vector<long long>& counts)",
+     "params : const SimulationParams&; counts : const std::vector<long long>& — conteo por sector.",
+     "Dibuja la corona de sectores en la base.",
+     "Cada sector se levanta en proporcion a las pelotas que recogio y su color pasa de azul a "
+     "magenta. Es la salida de resultados de la simulacion."),
     ("src/main.cpp", "bool saveScreenshot(const std::string& path, int width, int height)",
      "path : const std::string& — ruta destino; width, height : int — tamano del lienzo.",
      "Escribe un archivo BMP. Retorno bool: true si se guardo correctamente.",

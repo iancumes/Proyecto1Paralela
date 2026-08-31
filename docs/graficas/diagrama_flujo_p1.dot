@@ -19,7 +19,7 @@ digraph PlinkoParte1 {
     subgraph cluster_argumentos {
         label="1. Captura de argumentos y programacion defensiva";
         fontsize=12; color="#c9d7ea"; style="rounded"; bgcolor="#f7fafe";
-        parse   [label="parseCommandLine()\nRecorre argv y reconoce cada opcion:\n-n  --pegs  --modifiers  --bins  --radius  --gravity\n--restitution  --substeps  --no-interaction  --seed\n-w  -h  --no-vsync  -m  -t  --no-prompt\n--benchmark  --bench-*  --screenshot  --warmup"];
+        parse   [label="parseCommandLine()\nRecorre argv y reconoce cada opcion:\n-n  --pegs  --modifiers  --bins  --radius  --gravity\n--restitution  --substeps  --no-interaction  --seed\n--board-radius  --board-height\n-w  -h  --windowed  --no-vsync  --rotation  --pitch\n-m  -t  --no-prompt\n--benchmark  --bench-*  --screenshot  --warmup"];
         d_valor [shape=diamond, fillcolor="#fdf3e6", color="#eb6834", label="La opcion\nrecibio su valor?"];
         e_valor [shape=parallelogram, fillcolor="#fdecea", color="#e34948", label="Mensaje: la opcion\nrequiere un valor"];
         d_tipo  [shape=diamond, fillcolor="#fdf3e6", color="#eb6834", label="El valor es del\ntipo correcto?"];
@@ -38,13 +38,13 @@ digraph PlinkoParte1 {
         pedir   [shape=parallelogram, fillcolor="#fff8e6", color="#eda100", label="promptForMissingValues()\nSolicitar N por consola\n(Enter conserva el valor por omision)"];
         d_ok_n  [shape=diamond, fillcolor="#fdf3e6", color="#eb6834", label="N es un entero\nentre 1 y 200000?"];
         reintento [label="Reintentar\n(hasta 3 veces)"];
-        omision [label="Usar el valor por\nomision N = 600"];
+        omision [label="Usar el valor por\nomision N = 200"];
     }
 
     subgraph cluster_validacion {
         label="3. Validacion de rangos (validateConfig)";
         fontsize=12; color="#c9d7ea"; style="rounded"; bgcolor="#f7fafe";
-        validar [label="Comprobar todos los parametros:\n1 <= N <= 200000\nlienzo >= 640 x 480 pixeles\ngravedad < 0\n0 <= restitucion <= 1\n1 <= sub-pasos <= 16\n0 <= hilos <= 512\nrepeticiones del banco >= 10"];
+        validar [label="Comprobar todos los parametros:\n1 <= N <= 200000\nlienzo >= 640 x 480 pixeles\nradio y altura del tablero coherentes\ninclinacion de camara en [-80, 80]\ngravedad < 0\n0 <= restitucion <= 1\n1 <= sub-pasos <= 16\n0 <= hilos <= 512\nrepeticiones del banco >= 10"];
         d_val   [shape=diamond, fillcolor="#fdf3e6", color="#eb6834", label="Todos los valores\nestan en rango?"];
         e_val   [shape=parallelogram, fillcolor="#fdecea", color="#e34948", label="Imprimir el motivo\ny el texto de ayuda"];
     }

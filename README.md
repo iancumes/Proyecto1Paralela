@@ -1,8 +1,10 @@
 # Plinko 3D Paralelo
 
-Screensaver escrito en C++17 que simula un tablero de Plinko en 3D: **N** pelotas
-caen, chocan entre sí, rebotan contra clavijas oscilantes, atraviesan zonas que
-alteran su física y terminan contadas en casillas al pie del tablero. Se dibuja
+Screensaver escrito en C++17 que simula una **pirámide de Plinko en 3D**: miles
+de pelotas llueven sobre un cono de clavijas oscilantes, chocan entre sí, se
+reparten hacia afuera rebotando de nivel en nivel, atraviesan zonas que alteran
+su física y terminan contadas en sectores angulares alrededor de la base. La
+cámara orbita alrededor de la pirámide. Arranca a pantalla completa, se dibuja
 con SDL2 y OpenGL y muestra los FPS en pantalla.
 
 El proyecto compara **cuatro estrategias de ejecución** sobre exactamente el
@@ -14,34 +16,52 @@ corre.
 > Valle de Guatemala, Semestre 2, 2026.
 > Ian Cumes (23236) · Javier Valladares (23045) · Nery Molina (23218)
 
-![Plinko 3D Paralelo en ejecución](docs/capturas/plinko_n600.png)
+![Plinko 3D Paralelo en ejecución](docs/capturas/piramide_frontal.png)
+
+Con menos pelotas se aprecia la estructura de la pirámide:
+
+![La pirámide de clavijas](docs/capturas/piramide_estructura.png)
 
 ## Resultados
 
 Medido en un Apple M1 Pro (6 núcleos de rendimiento + 2 de eficiencia), 12
-repeticiones por configuración. El speedup se calcula contra la versión
-secuencial medida con el mismo N.
+repeticiones por configuración. Se reporta el **mejor** tiempo de las doce, no el
+promedio: la interferencia del sistema operativo solo puede añadir tiempo, nunca
+quitarlo. La comprobación de que el criterio es sano es que el speedup con un
+solo hilo da 1.00 en las seis cargas (con el promedio se dispersaba entre 0.90 y
+1.06). La sección 5.3 del informe lo desarrolla.
 
 | N | Secuencial (ms/paso) | `std::thread` | OMP estático 8h | OMP ajustado 8h | Mejor speedup | Eficiencia |
 |---|---|---|---|---|---|---|
-| 250 | 0.310 | 0.19x | 1.28x | 1.02x | **1.93x** (4 hilos) | 0.48 |
-| 500 | 0.868 | 0.20x | 2.02x | 2.06x | **2.75x** (4 hilos) | 0.69 |
-| 1000 | 2.712 | 0.20x | 3.06x | 3.47x | **3.87x** (6 hilos) | 0.64 |
-| 2000 | 9.270 | no viable | 3.92x | 3.57x | **4.38x** (6 hilos) | 0.73 |
-| 4000 | 36.549 | no viable | 3.59x | 4.14x | **4.93x** (6 hilos) | 0.82 |
-| 8000 | 137.555 | no viable | 3.13x | 5.90x | **5.90x** (8 hilos) | 0.74 |
+| 250 | 0.411 | 0.26x | 1.56x | 1.31x | **2.25x** (4 h) | 0.56 |
+| 500 | 1.082 | 0.25x | 2.54x | 2.35x | **3.02x** (4 h) | 0.76 |
+| 1000 | 3.117 | 0.24x | 3.47x | 3.98x | **4.31x** (6 h) | 0.72 |
+| 2000 | 10.095 | no viable | 3.76x | 5.08x | **5.08x** (8 h) | 0.64 |
+| 4000 | 36.450 | no viable | 4.16x | 5.15x | **5.15x** (8 h) | 0.64 |
+| 8000 | 133.428 | no viable | 4.48x | 5.07x | **5.07x** (8 h) | 0.63 |
+
+Con la configuración por omisión (N = 3 000) el cambio de modo se ve de
+inmediato en el HUD:
+
+| Modo | FPS | Física |
+|---|---|---|
+| Secuencial | 42 (ámbar) | 22.1 ms |
+| OpenMP estático, 8 hilos | 140 (verde) | 5.3 ms |
+| OpenMP ajustado, 8 hilos | 145 (verde) | 4.9 ms |
 
 Tres cosas que vale la pena señalar:
 
-- **Un hilo por pelota es contraproducente.** Esa versión resulta entre 4 y 5
+- **Un hilo por pelota es contraproducente.** Esa versión resulta unas cuatro
   veces *más lenta* que la secuencial, y por encima de 1 024 pelotas el sistema
   operativo ya no permite crearla. El costo de despertar y dormir N hilos crece
   con N mientras el trabajo por hilo se mantiene constante.
-- **La eficiencia cae a partir de 6 hilos.** El M1 Pro no tiene ocho núcleos
-  iguales; con reparto estático los dos núcleos lentos retrasan la barrera.
-  `schedule(guided)` recupera buena parte de esa pérdida con carga alta.
+- **`schedule(guided)` no siempre gana.** Con cuatro hilos o menos el reparto
+  estático es igual o mejor en las seis cargas, porque no hay desbalance que
+  corregir. La ventaja de la versión ajustada aparece con ocho hilos y N ≥ 1 000,
+  donde llega al 35 %: ahí entran al equipo los dos núcleos de eficiencia y el
+  reparto estático se desbalancea.
 - **Paralelizar solo rinde si el problema es grande.** Con N = 250 la sobrecarga
-  de la región paralela se come la ganancia; a partir de N ≈ 500 la eficiencia
+  de la región paralela se come la ganancia; a partir de N ≈ 1 000 la eficiencia
   crece de forma sostenida.
 
 El análisis completo está en **[docs/Informe_Proyecto1.pdf](docs/Informe_Proyecto1.pdf)**.
@@ -86,14 +106,16 @@ lienzo: todo se lee de aquí.
 | Opción | Descripción | Rango |
 |---|---|---|
 | `-n`, `--balls <entero>` | Cantidad N de pelotas | 1 – 200 000 |
-| `--pegs <filas>x<cols>` | Rejilla de clavijas, p. ej. `9x14` | 0 – 64 cada uno |
+| `--pegs <niv>x<anillo>` | Pirámide: niveles × clavijas de la base, p. ej. `12x46` | 0–64 y 0–256 |
 | `--modifiers <entero>` | Zonas modificadoras de física | 0 – 256 |
-| `--bins <entero>` | Casillas contadoras en la base | 1 – 64 |
+| `--bins <entero>` | Sectores angulares contadores en la base | 1 – 64 |
 | `--radius <decimal>` | Radio de cada pelota | 0.01 – 1.5 |
 | `--gravity <decimal>` | Gravedad en unidades/s² | debe ser negativa |
 | `--restitution <decimal>` | Coeficiente de restitución | 0 – 1 |
 | `--substeps <entero>` | Sub-pasos de integración por cuadro | 1 – 16 |
 | `--no-interaction` | Desactiva las colisiones pelota-pelota O(N²) | |
+| `--board-radius <dec>` | Radio del cilindro que contiene la escena | > 3× radio pelota |
+| `--board-height <dec>` | Altura útil de la escena | > 6× radio pelota |
 | `--seed <entero>` | Semilla del generador pseudoaleatorio | ≥ 0 |
 
 **Ventana**
@@ -102,7 +124,10 @@ lienzo: todo se lee de aquí.
 |---|---|---|
 | `-w`, `--width <entero>` | Ancho del lienzo en píxeles | ≥ 640 |
 | `-h`, `--height <entero>` | Alto del lienzo en píxeles | ≥ 480 |
+| `--windowed` | Arranca en ventana en lugar de pantalla completa | |
 | `--no-vsync` | Desactiva la sincronía vertical | |
+| `--rotation <dec>` | Grados por segundo que gira la cámara (0 la detiene) | −360 – 360 |
+| `--pitch <dec>` | Inclinación de la cámara en grados | −80 – 80 |
 
 **Ejecución**
 
@@ -136,6 +161,8 @@ con código distinto de cero.
 | `0` `1` `2` `3` | Secuencial / `std::thread` / OpenMP estático / OpenMP ajustado |
 | `ESPACIO` | Rota entre los cuatro modos |
 | `+` / `-` | Aumenta o reduce los hilos de OpenMP |
+| `,` / `.` | Reduce o aumenta la velocidad de giro de la cámara |
+| `F` | Alterna entre pantalla completa y ventana |
 | `R` | Reinicia la escena con una semilla nueva |
 | `ESC` o `Q` | Cierra la aplicación |
 
@@ -260,3 +287,13 @@ docs/
 - **OpenGL en un solo hilo.** El contexto no es seguro para múltiples hilos, así
   que el dibujado ocurre siempre en el hilo principal y solo después de que la
   barrera liberó a todos los hilos de la física.
+- **La cámara no toca la física.** El giro es puramente visual, de modo que los
+  tiempos y los speedup son comparables entre corridas y no dependen del ángulo.
+- **Clavijas y pelotas se distinguen por cuatro rasgos a la vez**, no solo por
+  color: las clavijas son más de tres veces más grandes, usan tonos fríos poco
+  saturados (ámbar las que oscilan), llevan una textura con contorno oscuro y no
+  emiten halo. Las pelotas usan tonos libres muy saturados y sí lo emiten.
+- **El encuadre se calcula muestreando el cilindro.** Al inclinar la cámara, el
+  borde cercano de la corona de sectores queda mucho más próximo que el centro;
+  ajustar la distancia con el tamaño aparente del plano central dejaba la base
+  cortada fuera del cuadro.

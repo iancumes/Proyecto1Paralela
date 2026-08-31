@@ -19,6 +19,12 @@
 // es lo que el proyecto quiere medir.
 // ---------------------------------------------------------------------------
 
+// Orientacion de la camara en orbita alrededor de la piramide.
+struct CameraState {
+    float yawDegrees   = 0.0F;   // Giro alrededor del eje vertical.
+    float pitchDegrees = 16.0F;  // Inclinacion sobre la horizontal.
+};
+
 // Datos que el HUD muestra sobre la escena.
 struct HudInfo {
     double framesPerSecond = 0.0;   // Cuadros por segundo medidos en la ultima ventana.
@@ -43,9 +49,10 @@ void shutdownRenderer();
 // Ajusta el viewport y la proyeccion tras un cambio de tamano de ventana.
 void resizeRenderer(int width, int height);
 
-// Dibuja un cuadro completo: tablero, clavijas, modificadores, pelotas y HUD.
-// Entradas: "simulation" estado de solo lectura; "hud" cifras a desplegar.
-void renderScene(const Simulation& simulation, const HudInfo& hud);
+// Dibuja un cuadro completo: piramide, clavijas, modificadores, pelotas y HUD.
+// Entradas: "simulation" estado de solo lectura; "hud" cifras a desplegar;
+//           "camera" orientacion de la camara en orbita.
+void renderScene(const Simulation& simulation, const HudInfo& hud, const CameraState& camera);
 
 // Dibuja una cadena de texto sobre el lienzo, en coordenadas de pixel medidas
 // desde la esquina superior izquierda.

@@ -15,9 +15,10 @@ namespace {
 constexpr float PI = 3.14159265358979323846F;
 constexpr int SPRITE_TEXTURE_SIZE = 64;   // Lado de la textura procedural.
 constexpr float FIELD_OF_VIEW = 45.0F;    // Campo de vision vertical en grados.
-constexpr float FIT_MARGIN = 1.10F;       // Holgura alrededor del tablero.
+constexpr float FIT_MARGIN = 1.03F;       // Holgura alrededor del contenido.
 
-GLuint g_sphereTexture = 0;  // Textura de esfera preiluminada (pelotas y clavijas).
+GLuint g_sphereTexture = 0;  // Textura de esfera preiluminada (pelotas).
+GLuint g_pegTexture = 0;     // Esfera con reborde oscuro, exclusiva de las clavijas.
 GLuint g_glowTexture = 0;    // Halo aditivo que da el aspecto de neon.
 int g_viewportWidth = 1280;  // Ancho actual del lienzo.
 int g_viewportHeight = 720;  // Alto actual del lienzo.
@@ -88,6 +89,66 @@ GLuint createSphereTexture() {
     return texture;
 }
 
+// Genera la textura de las clavijas: la misma esfera iluminada, pero con un
+// reborde oscuro bien marcado y un realce especular mucho mas tenue.
+//
+// El objetivo es que clavijas y pelotas nunca se confundan, aunque el color de
+// una pelota se acerque al de una clavija. Se separan por cuatro rasgos a la
+// vez: las clavijas son mas grandes, usan tonos frios poco saturados, llevan
+// este contorno oscuro y no emiten halo.
+GLuint createPegTexture() {
+    std::vector<std::uint8_t> pixels(
+        static_cast<std::size_t>(SPRITE_TEXTURE_SIZE) * SPRITE_TEXTURE_SIZE * 4, 0);
+
+    const float half = SPRITE_TEXTURE_SIZE * 0.5F;
+    for (int y = 0; y < SPRITE_TEXTURE_SIZE; ++y) {
+        for (int x = 0; x < SPRITE_TEXTURE_SIZE; ++x) {
+            const float nx = (static_cast<float>(x) + 0.5F - half) / half;
+            const float ny = (static_cast<float>(y) + 0.5F - half) / half;
+            const float radiusSquared = nx * nx + ny * ny;
+            const std::size_t offset =
+                (static_cast<std::size_t>(y) * SPRITE_TEXTURE_SIZE + static_cast<std::size_t>(x)) * 4;
+
+            if (radiusSquared > 1.0F) {
+                pixels[offset + 3] = 0;
+                continue;
+            }
+
+            const float radius = std::sqrt(radiusSquared);
+            const float nz = std::sqrt(std::max(0.0F, 1.0F - radiusSquared));
+            const float diffuse = std::max(0.0F, nx * -0.42F + ny * -0.52F + nz * 0.74F);
+            float intensity = 0.30F + 0.78F * diffuse + std::pow(diffuse, 30.0F) * 0.35F;
+
+            // Reborde: el ultimo 18 % del radio se oscurece con fuerza, lo que
+            // da a la clavija un contorno nitido contra el fondo y contra
+            // cualquier pelota que pase por detras.
+            if (radius > 0.82F) {
+                const float borde = (radius - 0.82F) / 0.18F;
+                intensity *= (1.0F - 0.82F * borde);
+            }
+
+            const float edge = std::min(1.0F, (1.0F - radius) * 14.0F);
+            const std::uint8_t canal =
+                static_cast<std::uint8_t>(std::min(255.0F, intensity * 255.0F));
+            pixels[offset + 0] = canal;
+            pixels[offset + 1] = canal;
+            pixels[offset + 2] = canal;
+            pixels[offset + 3] = static_cast<std::uint8_t>(std::max(0.0F, edge) * 255.0F);
+        }
+    }
+
+    GLuint texture = 0;
+    glGenTextures(1, &texture);
+    glBindTexture(GL_TEXTURE_2D, texture);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, SPRITE_TEXTURE_SIZE, SPRITE_TEXTURE_SIZE, 0,
+                 GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+    return texture;
+}
+
 // Genera un halo radial suave que se dibuja en modo aditivo alrededor de cada
 // pelota. Es lo que produce la estetica de neon del screensaver.
 GLuint createGlowTexture() {
@@ -123,152 +184,318 @@ GLuint createGlowTexture() {
     return texture;
 }
 
-// Emite los cuatro vertices de un billboard centrado en (x, y, z).
-// La camara no rota, asi que un cuadrilatero en el plano XY siempre queda de
-// frente y no hace falta reconstruir la base de la vista.
-inline void emitBillboard(float x, float y, float z, float radius) {
-    glTexCoord2f(0.0F, 0.0F); glVertex3f(x - radius, y + radius, z);
-    glTexCoord2f(1.0F, 0.0F); glVertex3f(x + radius, y + radius, z);
-    glTexCoord2f(1.0F, 1.0F); glVertex3f(x + radius, y - radius, z);
-    glTexCoord2f(0.0F, 1.0F); glVertex3f(x - radius, y - radius, z);
+// Base de la camara en coordenadas de mundo. Como la camara ahora orbita, un
+// cuadrilatero fijo en el plano XY dejaria de mirarla en cuanto girara: los
+// billboards se construyen sobre estos dos vectores.
+struct CameraBasis {
+    Vec3 right;  // Eje horizontal de la pantalla, llevado a coordenadas de mundo.
+    Vec3 up;     // Eje vertical de la pantalla, llevado a coordenadas de mundo.
+};
+
+// Invierte la rotacion de la vista para obtener los ejes de pantalla en mundo.
+// La matriz de vista es Rx(pitch) * Ry(yaw), asi que la inversa que se aplica a
+// los ejes canonicos es Ry(-yaw) * Rx(-pitch).
+CameraBasis cameraBasisFor(float yawDegrees, float pitchDegrees) {
+    const float yaw = yawDegrees * PI / 180.0F;
+    const float pitch = pitchDegrees * PI / 180.0F;
+    const float cosYaw = std::cos(yaw);
+    const float sinYaw = std::sin(yaw);
+    const float cosPitch = std::cos(pitch);
+    const float sinPitch = std::sin(pitch);
+    return {
+        {cosYaw, 0.0F, sinYaw},
+        {sinPitch * sinYaw, cosPitch, -sinPitch * cosYaw}
+    };
 }
 
-// Calcula a que distancia debe colocarse la camara para que el tablero completo
-// quepa en el lienzo, sin importar la relacion de aspecto de la ventana.
-// Entradas: dimensiones del tablero y relacion de aspecto actual.
+// Emite los cuatro vertices de un billboard centrado en "center", construido
+// sobre los ejes de pantalla para que quede siempre de frente a la camara.
+inline void emitBillboard(const Vec3& center, float radius, const CameraBasis& basis) {
+    const Vec3 r = basis.right * radius;
+    const Vec3 u = basis.up * radius;
+    const Vec3 superiorIzq = center - r + u;
+    const Vec3 superiorDer = center + r + u;
+    const Vec3 inferiorDer = center + r - u;
+    const Vec3 inferiorIzq = center - r - u;
+    glTexCoord2f(0.0F, 0.0F); glVertex3f(superiorIzq.x, superiorIzq.y, superiorIzq.z);
+    glTexCoord2f(1.0F, 0.0F); glVertex3f(superiorDer.x, superiorDer.y, superiorDer.z);
+    glTexCoord2f(1.0F, 1.0F); glVertex3f(inferiorDer.x, inferiorDer.y, inferiorDer.z);
+    glTexCoord2f(0.0F, 1.0F); glVertex3f(inferiorIzq.x, inferiorIzq.y, inferiorIzq.z);
+}
+
+// Calcula a que distancia debe colocarse la camara para que toda la escena
+// quepa en el lienzo, sea cual sea la inclinacion y la relacion de aspecto.
+//
+// Un calculo basado en el tamano aparente del plano central no sirve: al
+// inclinar la camara, el borde cercano del anillo de sectores queda mucho mas
+// proximo que el centro y se sale del frustum aunque el centro quepa de sobra.
+// Por eso se muestrean puntos del cilindro que contiene la escena, se les
+// aplica la rotacion de la vista y para cada uno se despeja la distancia
+// minima que lo mantiene dentro: como z_ojo = z_rotado - d, la condicion
+// |y_ojo| <= tan(fov/2) * (d - z_rotado) da d >= z_rotado + |y_rotado|/tan.
+// La distancia final es el maximo sobre todos los puntos.
+//
+// Entradas: "params" dimensiones de la escena; "aspect" relacion del lienzo;
+//           "yawDegrees" y "pitchDegrees" orientacion de la camara.
 // Salida: distancia en unidades de mundo sobre el eje Z.
-float cameraDistanceFor(const SimulationParams& params, float aspect) {
-    const float halfFov = FIELD_OF_VIEW * PI / 360.0F;
-    const float tangent = std::tan(halfFov);
-    // Distancia minima para que entre la altura y para que entre el ancho.
-    const float forHeight = (params.boardHeight * 0.5F * FIT_MARGIN) / tangent;
-    const float forWidth = (params.boardWidth * 0.5F * FIT_MARGIN) / (tangent * std::max(aspect, 0.1F));
-    return std::max(forHeight, forWidth) + params.halfDepth() + 1.0F;
+float cameraDistanceFor(const SimulationParams& params, float aspect,
+                        float yawDegrees, float pitchDegrees) {
+    const float tangent = std::tan(FIELD_OF_VIEW * PI / 360.0F);
+    const float tangenteHorizontal = tangent * std::max(aspect, 0.1F);
+    const float pitch = pitchDegrees * PI / 180.0F;
+    const float cosPitch = std::cos(pitch);
+    const float sinPitch = std::sin(pitch);
+
+    const float radio = params.boardRadius * FIT_MARGIN;
+    const float alturas[2] = {params.floorY() * FIT_MARGIN, params.ceilingY() * FIT_MARGIN};
+    constexpr int MUESTRAS = 24;
+
+    float distancia = 1.0F;
+    for (int muestra = 0; muestra < MUESTRAS; ++muestra) {
+        // El giro alrededor del eje vertical no cambia el conjunto de puntos del
+        // cilindro, asi que basta con recorrer el borde una vez.
+        const float angulo = 2.0F * PI * static_cast<float>(muestra) / MUESTRAS;
+        const float x = std::cos(angulo) * radio;
+        const float z = std::sin(angulo) * radio;
+        for (const float y : alturas) {
+            // Rotacion de la vista: Rx(pitch) aplicada al punto ya girado.
+            const float yRotado = y * cosPitch - z * sinPitch;
+            const float zRotado = y * sinPitch + z * cosPitch;
+            distancia = std::max(distancia, zRotado + std::fabs(yRotado) / tangent);
+            distancia = std::max(distancia, zRotado + std::fabs(x) / tangenteHorizontal);
+        }
+    }
+    (void)yawDegrees;
+    return distancia;
 }
 
-// Dibuja el panel de fondo con un degradado vertical y el marco del tablero.
-void renderBoard(const SimulationParams& params) {
-    const float left = -params.halfWidth();
-    const float right = params.halfWidth();
-    const float bottom = params.floorY();
-    const float top = params.ceilingY();
-    const float back = -params.halfDepth() - 0.35F;
+// Dibuja el piso de la escena como un disco oscuro con anillos concentricos.
+// Los anillos dan una referencia de profundidad que hace evidente el giro.
+void renderGround(const SimulationParams& params) {
+    const float floorY = params.floorY();
+    const float radius = params.boardRadius;
+    constexpr int SEGMENTS = 72;
 
     glDisable(GL_TEXTURE_2D);
-    glBegin(GL_QUADS);
-    glColor4f(0.03F, 0.05F, 0.14F, 1.0F);
-    glVertex3f(left, top, back);
-    glVertex3f(right, top, back);
-    glColor4f(0.07F, 0.03F, 0.16F, 1.0F);
-    glVertex3f(right, bottom, back);
-    glVertex3f(left, bottom, back);
-    glEnd();
-
-    // Rejilla tenue sobre el panel: aporta sensacion de profundidad sin
-    // competir visualmente con las pelotas.
-    glColor4f(0.16F, 0.24F, 0.45F, 0.35F);
-    glBegin(GL_LINES);
-    constexpr int GRID_LINES = 14;
-    for (int line = 1; line < GRID_LINES; ++line) {
-        const float t = static_cast<float>(line) / GRID_LINES;
-        glVertex3f(left + (right - left) * t, bottom, back + 0.005F);
-        glVertex3f(left + (right - left) * t, top, back + 0.005F);
-    }
-    for (int line = 1; line < GRID_LINES / 2; ++line) {
-        const float t = static_cast<float>(line) / (GRID_LINES / 2);
-        glVertex3f(left, bottom + (top - bottom) * t, back + 0.005F);
-        glVertex3f(right, bottom + (top - bottom) * t, back + 0.005F);
+    // Disco relleno, como abanico de triangulos desde el centro.
+    glBegin(GL_TRIANGLE_FAN);
+    glColor4f(0.045F, 0.055F, 0.130F, 1.0F);
+    glVertex3f(0.0F, floorY, 0.0F);
+    glColor4f(0.020F, 0.025F, 0.070F, 1.0F);
+    for (int segment = 0; segment <= SEGMENTS; ++segment) {
+        const float angle = 2.0F * PI * static_cast<float>(segment) / SEGMENTS;
+        glVertex3f(std::cos(angle) * radius, floorY, std::sin(angle) * radius);
     }
     glEnd();
 
-    // Marco trasero y marco delantero: entre ambos queda encerrado el volumen
-    // por el que se mueven las pelotas, de modo que ninguna parece escaparse.
-    const float front = params.halfDepth() + 0.15F;
-    glColor4f(0.20F, 0.50F, 0.85F, 0.55F);
+    // Anillos concentricos tenues.
+    glColor4f(0.16F, 0.26F, 0.48F, 0.30F);
+    for (int ring = 1; ring <= 4; ++ring) {
+        const float ringRadius = radius * static_cast<float>(ring) / 4.0F;
+        glBegin(GL_LINE_LOOP);
+        for (int segment = 0; segment < SEGMENTS; ++segment) {
+            const float angle = 2.0F * PI * static_cast<float>(segment) / SEGMENTS;
+            glVertex3f(std::cos(angle) * ringRadius, floorY + 0.01F,
+                       std::sin(angle) * ringRadius);
+        }
+        glEnd();
+    }
+}
+
+// Dibuja la jaula cilindrica que contiene la escena: dos circulos y unas
+// columnas verticales. Es lo que permite percibir el giro de la camara.
+void renderCage(const SimulationParams& params) {
+    const float radius = params.boardRadius;
+    const float bottom = params.floorY();
+    const float top = params.ceilingY();
+    constexpr int SEGMENTS = 72;
+    constexpr int COLUMNS = 12;
+
+    (void)top;
+    glDisable(GL_TEXTURE_2D);
+    // Solo el aro del piso: un cilindro completo dibujaba una linea horizontal
+    // en la parte alta del encuadre que distraia sin aportar profundidad.
+    glColor4f(0.24F, 0.55F, 0.92F, 0.75F);
     glBegin(GL_LINE_LOOP);
-    glVertex3f(left, bottom, back + 0.01F);
-    glVertex3f(right, bottom, back + 0.01F);
-    glVertex3f(right, top, back + 0.01F);
-    glVertex3f(left, top, back + 0.01F);
+    for (int segment = 0; segment < SEGMENTS; ++segment) {
+        const float angle = 2.0F * PI * static_cast<float>(segment) / SEGMENTS;
+        glVertex3f(std::cos(angle) * radius, bottom, std::sin(angle) * radius);
+    }
     glEnd();
 
-    glColor4f(0.35F, 0.80F, 1.0F, 0.90F);
-    glBegin(GL_LINE_LOOP);
-    glVertex3f(left, bottom, front);
-    glVertex3f(right, bottom, front);
-    glVertex3f(right, top, front);
-    glVertex3f(left, top, front);
-    glEnd();
-
-    // Aristas que unen ambos marcos: dan volumen a la caja del tablero.
-    glColor4f(0.22F, 0.45F, 0.75F, 0.45F);
+    // Puntales cortos hacia arriba: marcan la vertical sin cerrar la escena.
+    glColor4f(0.20F, 0.42F, 0.76F, 0.35F);
     glBegin(GL_LINES);
-    glVertex3f(left, bottom, back + 0.01F);  glVertex3f(left, bottom, front);
-    glVertex3f(right, bottom, back + 0.01F); glVertex3f(right, bottom, front);
-    glVertex3f(right, top, back + 0.01F);    glVertex3f(right, top, front);
-    glVertex3f(left, top, back + 0.01F);     glVertex3f(left, top, front);
+    for (int column = 0; column < COLUMNS; ++column) {
+        const float angle = 2.0F * PI * static_cast<float>(column) / COLUMNS;
+        const float x = std::cos(angle) * radius;
+        const float z = std::sin(angle) * radius;
+        glVertex3f(x, bottom, z);
+        glVertex3f(x, bottom + (top - bottom) * 0.06F, z);
+    }
     glEnd();
 }
 
-// Dibuja las divisiones de las casillas y un histograma con el conteo de cada
-// una. El histograma es la salida de resultados de la simulacion.
+// Dibuja las aristas de la piramide: lineas desde el vertice hasta el anillo
+// base, mas el contorno del anillo base. Refuerzan la lectura de la forma en 3D.
+void renderPyramidEdges(const std::vector<Peg>& pegs, const SimulationParams& params) {
+    if (pegs.empty()) {
+        return;
+    }
+    const Vec3 apex = pegs.front().basePosition;
+    const float baseRadius = params.pyramidRadius();
+    // El nivel mas bajo es el ultimo que se genero, asi que su altura es la de
+    // la ultima clavija del arreglo.
+    const float baseY = pegs.back().basePosition.y;
+    constexpr int EDGES = 8;
+    constexpr int SEGMENTS = 64;
+
+    glDisable(GL_TEXTURE_2D);
+    glColor4f(0.38F, 0.74F, 1.0F, 0.55F);
+    glBegin(GL_LINES);
+    for (int edge = 0; edge < EDGES; ++edge) {
+        const float angle = 2.0F * PI * static_cast<float>(edge) / EDGES;
+        glVertex3f(apex.x, apex.y, apex.z);
+        glVertex3f(std::cos(angle) * baseRadius, baseY, std::sin(angle) * baseRadius);
+    }
+    glEnd();
+
+    glColor4f(0.38F, 0.74F, 1.0F, 0.65F);
+    glBegin(GL_LINE_LOOP);
+    for (int segment = 0; segment < SEGMENTS; ++segment) {
+        const float angle = 2.0F * PI * static_cast<float>(segment) / SEGMENTS;
+        glVertex3f(std::cos(angle) * baseRadius, baseY, std::sin(angle) * baseRadius);
+    }
+    glEnd();
+}
+
+// Dibuja un aro que une las clavijas de cada nivel de la piramide.
+//
+// Sin estos aros, las clavijas se leen como una nube de esferas sueltas; con
+// ellos la piramide escalonada se reconoce de inmediato, incluso cuando las
+// pelotas cubren parte de la estructura.
+// Entradas: "pegs" clavijas ordenadas por nivel; "time" reloj de simulacion.
+void renderPyramidRings(const std::vector<Peg>& pegs, float time) {
+    if (pegs.empty()) {
+        return;
+    }
+    glDisable(GL_TEXTURE_2D);
+
+    std::size_t inicio = 0;
+    while (inicio < pegs.size()) {
+        // Las clavijas se generan nivel por nivel, asi que basta con avanzar
+        // mientras el nivel no cambie.
+        std::size_t fin = inicio;
+        while (fin < pegs.size() && pegs[fin].level == pegs[inicio].level) {
+            ++fin;
+        }
+        const std::size_t cantidad = fin - inicio;
+        if (cantidad >= 3) {
+            const Vec3& color = pegs[inicio].color;
+            glColor4f(color.x, color.y, color.z, 0.45F);
+            glBegin(GL_LINE_LOOP);
+            for (std::size_t indice = inicio; indice < fin; ++indice) {
+                const Vec3 centro = pegPositionAt(pegs[indice], time);
+                glVertex3f(centro.x, centro.y, centro.z);
+            }
+            glEnd();
+        }
+        inicio = fin;
+    }
+}
+
+// Dibuja el histograma de las casillas como una corona de sectores alrededor
+// del piso: cada sector se levanta en proporcion a las pelotas que recogio.
+// Es la salida de resultados de la simulacion.
 void renderBins(const SimulationParams& params, const std::vector<long long>& counts) {
     if (counts.empty()) {
         return;
     }
-    const float left = -params.halfWidth();
-    const float binWidth = params.boardWidth / static_cast<float>(counts.size());
-    const float bottom = params.floorY();
-    const float back = -params.halfDepth() - 0.3F;
     const long long maximum = std::max(1LL, *std::max_element(counts.begin(), counts.end()));
-    const float maximumHeight = params.boardHeight * 0.13F;
+    const float innerRadius = params.boardRadius * 0.80F;
+    const float outerRadius = params.boardRadius * 0.99F;
+    const float bottom = params.floorY() + 0.02F;
+    const float maximumHeight = params.boardHeight * 0.10F;
+    const int sectors = static_cast<int>(counts.size());
+    constexpr int SUBDIVISIONS = 4;  // Segmentos por sector, para curvar el arco.
 
     glDisable(GL_TEXTURE_2D);
-    glBegin(GL_QUADS);
-    for (std::size_t index = 0; index < counts.size(); ++index) {
-        const float x0 = left + binWidth * static_cast<float>(index) + binWidth * 0.12F;
-        const float x1 = left + binWidth * static_cast<float>(index + 1) - binWidth * 0.12F;
-        const float fraction = static_cast<float>(counts[index]) / static_cast<float>(maximum);
-        const float height = maximumHeight * fraction;
-        // El color pasa de azul (poco) a magenta (mucho).
-        glColor4f(0.25F + 0.70F * fraction, 0.30F - 0.18F * fraction, 0.95F - 0.25F * fraction, 0.80F);
-        glVertex3f(x0, bottom, back + 0.02F);
-        glVertex3f(x1, bottom, back + 0.02F);
-        glVertex3f(x1, bottom + height, back + 0.02F);
-        glVertex3f(x0, bottom + height, back + 0.02F);
-    }
-    glEnd();
+    for (int sector = 0; sector < sectors; ++sector) {
+        const float fraction = static_cast<float>(counts[static_cast<std::size_t>(sector)]) /
+                               static_cast<float>(maximum);
+        const float height = std::max(0.02F, maximumHeight * fraction);
+        // El sector empieza en -PI para coincidir con el calculo de la casilla
+        // que hace la fisica, que parte de atan2 desplazado.
+        const float angle0 = -PI + 2.0F * PI * static_cast<float>(sector) /
+                                   static_cast<float>(sectors);
+        const float angle1 = -PI + 2.0F * PI * static_cast<float>(sector + 1) /
+                                   static_cast<float>(sectors);
+        // Se deja un hueco angular entre sectores vecinos para que se distingan.
+        const float gap = (angle1 - angle0) * 0.12F;
+        const float inicio = angle0 + gap;
+        const float fin = angle1 - gap;
 
-    // Separadores entre casillas.
-    glColor4f(0.35F, 0.55F, 0.85F, 0.55F);
-    glBegin(GL_LINES);
-    for (std::size_t index = 0; index <= counts.size(); ++index) {
-        const float x = left + binWidth * static_cast<float>(index);
-        glVertex3f(x, bottom, back + 0.03F);
-        glVertex3f(x, bottom + maximumHeight * 1.05F, back + 0.03F);
+        // El color pasa de azul (poco) a magenta (mucho).
+        glColor4f(0.28F + 0.68F * fraction, 0.26F - 0.14F * fraction,
+                  0.92F - 0.22F * fraction, 0.88F);
+
+        // Cara superior del sector.
+        glBegin(GL_QUAD_STRIP);
+        for (int step = 0; step <= SUBDIVISIONS; ++step) {
+            const float t = static_cast<float>(step) / SUBDIVISIONS;
+            const float angle = inicio + (fin - inicio) * t;
+            const float cosA = std::cos(angle);
+            const float sinA = std::sin(angle);
+            glVertex3f(cosA * innerRadius, bottom + height, sinA * innerRadius);
+            glVertex3f(cosA * outerRadius, bottom + height, sinA * outerRadius);
+        }
+        glEnd();
+
+        // Cara exterior, la que se ve de frente al girar.
+        glColor4f(0.20F + 0.58F * fraction, 0.20F - 0.10F * fraction,
+                  0.78F - 0.18F * fraction, 0.92F);
+        glBegin(GL_QUAD_STRIP);
+        for (int step = 0; step <= SUBDIVISIONS; ++step) {
+            const float t = static_cast<float>(step) / SUBDIVISIONS;
+            const float angle = inicio + (fin - inicio) * t;
+            const float cosA = std::cos(angle);
+            const float sinA = std::sin(angle);
+            glVertex3f(cosA * outerRadius, bottom, sinA * outerRadius);
+            glVertex3f(cosA * outerRadius, bottom + height, sinA * outerRadius);
+        }
+        glEnd();
     }
-    glEnd();
 }
 
-// Dibuja las zonas modificadoras como anillos translucidos.
+// Dibuja las zonas modificadoras como tres anillos ortogonales, de modo que se
+// lean como esferas al girar la camara.
 void renderModifiers(const std::vector<Modifier>& modifiers, float time) {
     if (modifiers.empty()) {
         return;
     }
     glDisable(GL_TEXTURE_2D);
-    constexpr int SEGMENTS = 28;
+    constexpr int SEGMENTS = 26;
     for (const Modifier& modifier : modifiers) {
         // La pulsacion sinusoidal deja claro cual zona esta activa.
         const float pulse = 0.85F + 0.15F * std::sin(time * 2.4F + modifier.center.x);
-        glColor4f(modifier.color.x, modifier.color.y, modifier.color.z, 0.30F);
-        glBegin(GL_LINE_LOOP);
-        for (int segment = 0; segment < SEGMENTS; ++segment) {
-            const float angle = 2.0F * PI * static_cast<float>(segment) / SEGMENTS;
-            glVertex3f(modifier.center.x + std::cos(angle) * modifier.radius * pulse,
-                       modifier.center.y + std::sin(angle) * modifier.radius * pulse,
-                       modifier.center.z);
+        const float radius = modifier.radius * pulse;
+        glColor4f(modifier.color.x, modifier.color.y, modifier.color.z, 0.26F);
+        for (int plane = 0; plane < 3; ++plane) {
+            glBegin(GL_LINE_LOOP);
+            for (int segment = 0; segment < SEGMENTS; ++segment) {
+                const float angle = 2.0F * PI * static_cast<float>(segment) / SEGMENTS;
+                const float a = std::cos(angle) * radius;
+                const float b = std::sin(angle) * radius;
+                if (plane == 0) {
+                    glVertex3f(modifier.center.x + a, modifier.center.y + b, modifier.center.z);
+                } else if (plane == 1) {
+                    glVertex3f(modifier.center.x + a, modifier.center.y, modifier.center.z + b);
+                } else {
+                    glVertex3f(modifier.center.x, modifier.center.y + a, modifier.center.z + b);
+                }
+            }
+            glEnd();
         }
-        glEnd();
     }
 }
 
@@ -276,6 +503,7 @@ void renderModifiers(const std::vector<Modifier>& modifiers, float time) {
 
 void initializeRenderer(int width, int height) {
     g_sphereTexture = createSphereTexture();
+    g_pegTexture = createPegTexture();
     g_glowTexture = createGlowTexture();
 
     glEnable(GL_DEPTH_TEST);
@@ -298,6 +526,10 @@ void shutdownRenderer() {
     if (g_sphereTexture != 0) {
         glDeleteTextures(1, &g_sphereTexture);
         g_sphereTexture = 0;
+    }
+    if (g_pegTexture != 0) {
+        glDeleteTextures(1, &g_pegTexture);
+        g_pegTexture = 0;
     }
     if (g_glowTexture != 0) {
         glDeleteTextures(1, &g_glowTexture);
@@ -347,7 +579,7 @@ void drawText(const std::string& text, float x, float y, float scale,
     glEnd();
 }
 
-void renderScene(const Simulation& simulation, const HudInfo& hud) {
+void renderScene(const Simulation& simulation, const HudInfo& hud, const CameraState& camera) {
     const SimulationParams& params = simulation.params();
 
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -355,20 +587,34 @@ void renderScene(const Simulation& simulation, const HudInfo& hud) {
     glLoadIdentity();
     const float aspect =
         static_cast<float>(g_viewportWidth) / static_cast<float>(g_viewportHeight);
-    glTranslatef(0.0F, 0.0F, -cameraDistanceFor(params, aspect));
 
-    renderBoard(params);
+    // Camara en orbita: se aleja, se inclina y luego gira alrededor del eje
+    // vertical. El giro es puramente visual, no toca la fisica, de modo que las
+    // mediciones de rendimiento siguen siendo comparables.
+    glTranslatef(0.0F, 0.0F,
+                 -cameraDistanceFor(params, aspect, camera.yawDegrees, camera.pitchDegrees));
+    glRotatef(camera.pitchDegrees, 1.0F, 0.0F, 0.0F);
+    glRotatef(camera.yawDegrees, 0.0F, 1.0F, 0.0F);
+
+    const CameraBasis basis = cameraBasisFor(camera.yawDegrees, camera.pitchDegrees);
+
+    renderGround(params);
     renderBins(params, simulation.binCounts());
+    renderCage(params);
+    renderPyramidEdges(simulation.pegs(), params);
+    renderPyramidRings(simulation.pegs(), simulation.time());
     renderModifiers(simulation.modifiers(), simulation.time());
 
     // --- Clavijas ----------------------------------------------------------
+    // Se dibujan con su propia textura, de contorno oscuro y sin halo, para que
+    // nunca se confundan con las pelotas.
     glEnable(GL_TEXTURE_2D);
-    glBindTexture(GL_TEXTURE_2D, g_sphereTexture);
+    glBindTexture(GL_TEXTURE_2D, g_pegTexture);
     glBegin(GL_QUADS);
     for (const Peg& peg : simulation.pegs()) {
         const Vec3 center = pegPositionAt(peg, simulation.time());
         glColor4f(peg.color.x, peg.color.y, peg.color.z, 1.0F);
-        emitBillboard(center.x, center.y, center.z, peg.radius);
+        emitBillboard(center, peg.radius, basis);
     }
     glEnd();
 
@@ -383,8 +629,8 @@ void renderScene(const Simulation& simulation, const HudInfo& hud) {
         if (!ball.active) {
             continue;
         }
-        glColor4f(ball.color.x, ball.color.y, ball.color.z, 0.42F);
-        emitBillboard(ball.position.x, ball.position.y, ball.position.z, ball.radius * 2.6F);
+        glColor4f(ball.color.x, ball.color.y, ball.color.z, 0.38F);
+        emitBillboard(ball.position, ball.radius * 2.4F, basis);
     }
     glEnd();
 
@@ -399,7 +645,7 @@ void renderScene(const Simulation& simulation, const HudInfo& hud) {
             continue;
         }
         glColor4f(ball.color.x, ball.color.y, ball.color.z, 1.0F);
-        emitBillboard(ball.position.x, ball.position.y, ball.position.z, ball.radius);
+        emitBillboard(ball.position, ball.radius, basis);
     }
     glEnd();
     glDisable(GL_TEXTURE_2D);
@@ -483,7 +729,7 @@ void renderScene(const Simulation& simulation, const HudInfo& hud) {
     drawText(buffer, marginX, cursorY, scale, 0.65F, 0.78F, 0.95F, 1.0F);
 
     // Ayuda de teclado en la esquina inferior izquierda.
-    drawText("0-3 MODO   ESPACIO ROTA   +/- HILOS   R REINICIA   ESC SALE",
+    drawText("0-3 MODO   ESPACIO ROTA   +/- HILOS   , . GIRO   F PANTALLA   R REINICIA   ESC SALE",
              marginX, static_cast<float>(g_viewportHeight) - lineHeight - 6.0F,
              scale * 0.75F, 0.55F, 0.68F, 0.85F, 0.95F);
 

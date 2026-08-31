@@ -24,15 +24,17 @@ struct Ball {
     bool active;          // Falso desactiva la pelota sin borrarla del arreglo.
 };
 
-// Clavija del tablero. Puede oscilar de forma sinusoidal para que el recorrido
-// de las pelotas no sea repetitivo (elemento de trigonometria del proyecto).
+// Clavija de la piramide. Puede oscilar de forma sinusoidal en direccion radial
+// para que el recorrido de las pelotas no sea repetitivo (elemento de
+// trigonometria del proyecto).
 struct Peg {
     Vec3 basePosition;    // Centro de reposo de la clavija.
     Vec3 color;           // Color RGB de dibujo.
-    float radius;         // Radio del cilindro/esfera de colision.
-    float amplitude;      // Amplitud de la oscilacion horizontal.
+    float radius;         // Radio de la esfera de colision.
+    float amplitude;      // Amplitud de la oscilacion radial.
     float angularSpeed;   // Velocidad angular de la oscilacion (rad/s).
     float phase;          // Desfase inicial, distinto por clavija.
+    std::int32_t level;   // Nivel de la piramide, 0 en el vertice superior.
 };
 
 // Zona que altera la fisica local de las pelotas que la atraviesan.
@@ -53,8 +55,21 @@ struct Modifier {
 // Devuelve la posicion de la clavija en el instante "time".
 // Entradas: "peg" clavija consultada; "time" tiempo de simulacion en segundos.
 // Salida: Vec3 con el centro desplazado por la oscilacion sinusoidal.
+//
+// La oscilacion es radial: la clavija se acerca y se aleja del eje vertical de
+// la piramide. La del vertice, que esta sobre el eje, oscila verticalmente,
+// porque ahi la direccion radial no esta definida.
 // Es una funcion pura: puede llamarse desde cualquier hilo sin sincronizacion.
 inline Vec3 pegPositionAt(const Peg& peg, float time) {
+    if (peg.amplitude == 0.0F) {
+        return peg.basePosition;
+    }
     const float offset = peg.amplitude * std::sin(peg.angularSpeed * time + peg.phase);
-    return {peg.basePosition.x + offset, peg.basePosition.y, peg.basePosition.z};
+    const float planarRadius = std::sqrt(peg.basePosition.x * peg.basePosition.x +
+                                         peg.basePosition.z * peg.basePosition.z);
+    if (planarRadius < 1.0e-4F) {
+        return {peg.basePosition.x, peg.basePosition.y + offset, peg.basePosition.z};
+    }
+    const float scale = (planarRadius + offset) / planarRadius;
+    return {peg.basePosition.x * scale, peg.basePosition.y, peg.basePosition.z * scale};
 }

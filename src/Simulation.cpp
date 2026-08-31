@@ -17,8 +17,12 @@ namespace {
 constexpr float AIR_DRAG          = 0.16F; // Amortiguamiento del aire por segundo.
 constexpr float PEG_JITTER        = 0.55F; // Desviacion lateral maxima al golpear una clavija.
 constexpr float MAX_SPEED         = 26.0F; // Rapidez maxima; evita que la escena "explote".
-constexpr float SPAWN_SPREAD      = 0.92F; // Fraccion del ancho usada al reaparecer.
-constexpr float PEG_RADIUS_FACTOR = 1.30F; // Radio de clavija relativo al radio de la pelota.
+constexpr float SPAWN_SPREAD      = 0.80F; // Fraccion del radio de la arena donde nacen.
+// Las clavijas son mas de tres veces mas grandes que las pelotas. Ese contraste
+// de tamano, junto con el color frio, el contorno oscuro y la ausencia de halo,
+// es lo que permite distinguirlas de un vistazo aunque haya miles de pelotas.
+constexpr float PEG_RADIUS_FACTOR = 3.20F; // Radio de clavija relativo al radio de la pelota.
+constexpr float TWO_PI            = 6.28318530718F;
 
 // Convierte un color HSV a RGB. Se usa para generar colores pseudoaleatorios
 // vistosos: al fijar saturacion y valor altos se evitan los tonos apagados que
@@ -47,17 +51,29 @@ Vec3 hsvToRgb(float hue, float saturation, float value) {
 // velocidad nuevas. Consume unicamente el generador propio de la pelota, por lo
 // que puede ejecutarse dentro de un ciclo paralelo sin sincronizacion.
 void respawnAtTop(Ball& ball, const SimulationParams& params) {
-    const float usableHalfWidth = params.halfWidth() * SPAWN_SPREAD - ball.radius;
-    ball.position.x = nextRandomInRange(ball.seed, -usableHalfWidth, usableHalfWidth);
+    // Las pelotas llueven sobre toda la arena, no solo sobre el vertice. Con N
+    // grande, concentrarlas en un disco estrecho formaba una nube compacta que
+    // tapaba por completo la piramide; repartidas se ven como lluvia y dejan
+    // ver la estructura por la que resbalan.
+    const float spawnRadius = params.boardRadius * SPAWN_SPREAD;
+    const float angle = nextRandomInRange(ball.seed, 0.0F, TWO_PI);
+    // La raiz cuadrada reparte los puntos de forma uniforme sobre el area del
+    // disco; sin ella se acumularian cerca del centro.
+    const float distance = spawnRadius * std::sqrt(nextRandomFloat(ball.seed));
+    ball.position.x = std::cos(angle) * distance;
+    ball.position.z = std::sin(angle) * distance;
+    // La altura de aparicion se reparte sobre una franja alta en lugar de un
+    // punto fijo: si todas nacen a la misma altura se amontonan y forman una
+    // columna atascada sobre el vertice.
     ball.position.y = params.ceilingY() - ball.radius -
-                      nextRandomInRange(ball.seed, 0.0F, 0.6F);
-    ball.position.z = nextRandomInRange(ball.seed,
-                                        -params.halfDepth() + ball.radius,
-                                        params.halfDepth() - ball.radius);
-    ball.velocity.x = nextRandomInRange(ball.seed, -1.1F, 1.1F);
-    ball.velocity.y = nextRandomInRange(ball.seed, -1.4F, -0.2F);
+                      nextRandomInRange(ball.seed, 0.0F, params.boardHeight * 0.26F);
+    ball.velocity.x = nextRandomInRange(ball.seed, -0.5F, 0.5F);
+    ball.velocity.y = nextRandomInRange(ball.seed, -1.2F, -0.2F);
     ball.velocity.z = nextRandomInRange(ball.seed, -0.5F, 0.5F);
-    ball.color = hsvToRgb(nextRandomFloat(ball.seed), 0.78F, 1.0F);
+    // Tono completamente libre y saturacion alta: las pelotas cubren todo el
+    // circulo cromatico, a diferencia de las clavijas, que se quedan en los
+    // tonos frios y apagados.
+    ball.color = hsvToRgb(nextRandomFloat(ball.seed), 0.85F, 1.0F);
 }
 
 // Limita la rapidez de la pelota sin alterar su direccion.
@@ -167,58 +183,57 @@ Ball advanceBall(std::size_t index,
     ball.position += ball.velocity * dt;
     ball.position += separation;
 
-    // --- 4. Colisiones contra las clavijas (O(M)) ---------------------------
-    // Las clavijas se modelan como cilindros paralelos al eje Z, por lo que la
-    // distancia se evalua unicamente en el plano XY.
+    // --- 4. Colisiones contra las clavijas de la piramide (O(M)) ------------
+    // Las clavijas son esferas, de modo que la colision se resuelve en las tres
+    // dimensiones: una pelota puede golpearlas por cualquier lado mientras
+    // desciende por la superficie del cono.
     for (std::size_t p = 0; p < pegCount; ++p) {
         const Peg& peg = pegs[p];
         const Vec3 center = pegPositionAt(peg, time);
-        const float dx = ball.position.x - center.x;
-        const float dy = ball.position.y - center.y;
+        const Vec3 delta = ball.position - center;
         const float contactDistance = ball.radius + peg.radius;
-        const float distanceSquared = dx * dx + dy * dy;
+        const float distanceSquared = lengthSquared(delta);
         if (distanceSquared >= contactDistance * contactDistance) {
             continue;
         }
 
         const float distance = std::sqrt(std::max(distanceSquared, 1.0e-10F));
-        const float normalX = dx / distance;
-        const float normalY = dy / distance;
+        const Vec3 normal = delta * (1.0F / distance);
 
-        // Se empuja la pelota fuera de la clavija.
-        ball.position.x = center.x + normalX * contactDistance;
-        ball.position.y = center.y + normalY * contactDistance;
+        // Se empuja la pelota justo fuera de la clavija.
+        ball.position = center + normal * contactDistance;
 
         // Reflexion de la velocidad respecto de la normal, con perdida de energia.
-        const float normalSpeed = ball.velocity.x * normalX + ball.velocity.y * normalY;
+        const float normalSpeed = dot(ball.velocity, normal);
         if (normalSpeed < 0.0F) {
-            const float impulse = -(1.0F + params.restitution) * normalSpeed;
-            ball.velocity.x += normalX * impulse;
-            ball.velocity.y += normalY * impulse;
-            // Pequena desviacion pseudoaleatoria: es lo que hace que dos
-            // pelotas identicas terminen en casillas distintas.
+            ball.velocity += normal * (-(1.0F + params.restitution) * normalSpeed);
+            // Pequena desviacion pseudoaleatoria horizontal: es lo que hace que
+            // dos pelotas identicas terminen en sectores distintos.
             ball.velocity.x += nextRandomInRange(ball.seed, -PEG_JITTER, PEG_JITTER);
-            ball.velocity.z += nextRandomInRange(ball.seed, -PEG_JITTER, PEG_JITTER) * 0.35F;
+            ball.velocity.z += nextRandomInRange(ball.seed, -PEG_JITTER, PEG_JITTER);
         }
     }
 
-    // --- 5. Paredes laterales, fondo de profundidad y techo -----------------
-    const float horizontalLimit = params.halfWidth() - ball.radius;
-    if (ball.position.x < -horizontalLimit) {
-        ball.position.x = -horizontalLimit;
-        ball.velocity.x = std::fabs(ball.velocity.x) * params.restitution;
-    } else if (ball.position.x > horizontalLimit) {
-        ball.position.x = horizontalLimit;
-        ball.velocity.x = -std::fabs(ball.velocity.x) * params.restitution;
-    }
-
-    const float depthLimit = params.halfDepth() - ball.radius;
-    if (ball.position.z < -depthLimit) {
-        ball.position.z = -depthLimit;
-        ball.velocity.z = std::fabs(ball.velocity.z) * params.restitution;
-    } else if (ball.position.z > depthLimit) {
-        ball.position.z = depthLimit;
-        ball.velocity.z = -std::fabs(ball.velocity.z) * params.restitution;
+    // --- 5. Pared cilindrica y techo ----------------------------------------
+    // La escena esta contenida en un cilindro vertical, no en una caja: es la
+    // forma que corresponde a una piramide que se observa girando.
+    const float wallLimit = params.usableRadius(ball.radius);
+    const float planarDistanceSquared =
+        ball.position.x * ball.position.x + ball.position.z * ball.position.z;
+    if (planarDistanceSquared > wallLimit * wallLimit && planarDistanceSquared > 1.0e-10F) {
+        const float planarDistance = std::sqrt(planarDistanceSquared);
+        const float normalX = ball.position.x / planarDistance;
+        const float normalZ = ball.position.z / planarDistance;
+        ball.position.x = normalX * wallLimit;
+        ball.position.z = normalZ * wallLimit;
+        // Solo se invierte la componente radial de la velocidad; la tangencial
+        // se conserva, de modo que la pelota resbala a lo largo de la pared.
+        const float radialSpeed = ball.velocity.x * normalX + ball.velocity.z * normalZ;
+        if (radialSpeed > 0.0F) {
+            const float impulse = -(1.0F + params.restitution) * radialSpeed;
+            ball.velocity.x += normalX * impulse;
+            ball.velocity.z += normalZ * impulse;
+        }
     }
 
     const float ceiling = params.ceilingY() - ball.radius;
@@ -227,12 +242,14 @@ Ball advanceBall(std::size_t index,
         ball.velocity.y = -std::fabs(ball.velocity.y) * params.restitution;
     }
 
-    // --- 6. Llegada al fondo: se anota la casilla y la pelota se recicla -----
+    // --- 6. Llegada al fondo: se anota el sector y la pelota se recicla ------
+    // Las casillas son sectores angulares alrededor del eje de la piramide, que
+    // es la division natural cuando la escena tiene simetria de revolucion.
     if (ball.position.y - ball.radius <= params.floorY()) {
-        const float normalizedX =
-            (ball.position.x + params.halfWidth()) / std::max(params.boardWidth, 1.0e-4F);
+        const float angle = std::atan2(ball.position.z, ball.position.x);
+        const float normalized = (angle + 3.14159265F) / TWO_PI;  // pasa a [0, 1)
         const int bin = std::clamp(
-            static_cast<int>(normalizedX * static_cast<float>(params.binCount)),
+            static_cast<int>(normalized * static_cast<float>(params.binCount)),
             0, params.binCount - 1);
         binHit = bin;
         respawnAtTop(ball, params);
@@ -289,42 +306,66 @@ void Simulation::resizeBallCount(int ballCount) {
 
 void Simulation::buildPegs(std::uint32_t& seedState) {
     pegs_.clear();
-    const int rows = std::max(params_.pegRows, 0);
-    const int columns = std::max(params_.pegColumns, 0);
-    if (rows == 0 || columns == 0) {
+    const int levels = std::max(params_.pegLevels, 0);
+    const int baseRing = std::max(params_.pegsPerBaseRing, 0);
+    if (levels == 0 || baseRing == 0) {
         return;
     }
 
-    pegs_.reserve(static_cast<std::size_t>(rows) * static_cast<std::size_t>(columns));
     const float pegRadius = params_.ballRadius * PEG_RADIUS_FACTOR;
-    // Se deja un margen arriba (zona de caida) y abajo (zona de casillas).
-    const float topY = params_.ceilingY() - params_.boardHeight * 0.14F;
-    const float bottomY = params_.floorY() + params_.boardHeight * 0.16F;
-    const float rowSpacing = rows > 1 ? (topY - bottomY) / static_cast<float>(rows - 1) : 0.0F;
-    const float columnSpacing = params_.boardWidth / static_cast<float>(columns + 1);
+    // El vertice queda por debajo del techo, para dejar espacio de caida, y la
+    // base por encima del piso, para dejar espacio a los sectores contadores.
+    const float topY = params_.ceilingY() - params_.boardHeight * 0.15F;
+    const float bottomY = params_.floorY() + params_.boardHeight * 0.15F;
+    const float maxRingRadius = params_.pyramidRadius();
 
-    for (int row = 0; row < rows; ++row) {
-        // Las filas impares se desplazan medio paso: es la rejilla clasica de
-        // un tablero Plinko y garantiza que la pelota siempre encuentre clavija.
-        const float offset = (row % 2 == 0) ? 0.0F : columnSpacing * 0.5F;
-        for (int column = 0; column < columns; ++column) {
+    pegs_.reserve(static_cast<std::size_t>(levels) * static_cast<std::size_t>(baseRing));
+
+    for (int level = 0; level < levels; ++level) {
+        // "t" recorre la piramide de 0 en el vertice a 1 en la base.
+        const float t = levels > 1
+            ? static_cast<float>(level) / static_cast<float>(levels - 1)
+            : 0.0F;
+        const float y = topY - t * (topY - bottomY);
+        const float ringRadius = maxRingRadius * t;
+
+        // La cantidad de clavijas crece con el radio del anillo, de modo que la
+        // separacion entre clavijas vecinas se mantiene aproximadamente
+        // constante en toda la piramide.
+        const int count = (level == 0)
+            ? 1
+            : std::max(3, static_cast<int>(std::lround(baseRing * t)));
+
+        // Los niveles impares se giran medio paso angular: sin ese desfase
+        // quedarian canales rectos por los que las pelotas caerian sin rebotar.
+        const float angularOffset = (level % 2 == 0) ? 0.0F : 3.14159265F / count;
+
+        for (int index = 0; index < count; ++index) {
             Peg peg {};
-            peg.basePosition = {
-                -params_.halfWidth() + columnSpacing * static_cast<float>(column + 1) + offset,
-                topY - rowSpacing * static_cast<float>(row),
-                0.0F
-            };
+            const float angle =
+                TWO_PI * static_cast<float>(index) / static_cast<float>(count) + angularOffset;
+            peg.basePosition = {std::cos(angle) * ringRadius, y, std::sin(angle) * ringRadius};
             peg.radius = pegRadius;
-            // Solo una parte de las clavijas oscila, para que el tablero tenga
+            peg.level = level;
+
+            // Solo una parte de las clavijas oscila, para que la piramide tenga
             // zonas predecibles y zonas cambiantes.
-            const bool oscillates = (nextRandomFloat(seedState) < 0.35F);
-            peg.amplitude = oscillates ? nextRandomInRange(seedState, 0.18F, 0.45F) : 0.0F;
-            peg.angularSpeed = nextRandomInRange(seedState, 0.6F, 1.9F);
-            peg.phase = nextRandomInRange(seedState, 0.0F, 6.2831853F);
-            // Las clavijas que oscilan se pintan en violeta y las fijas en cian,
-            // para que se distinga a simple vista cual parte del tablero cambia.
-            peg.color = oscillates ? hsvToRgb(0.78F, 0.55F, 0.95F)
-                                   : hsvToRgb(0.53F, 0.45F, 0.78F);
+            const bool oscillates = (nextRandomFloat(seedState) < 0.30F);
+            peg.amplitude = oscillates ? nextRandomInRange(seedState, 0.10F, 0.28F) : 0.0F;
+            peg.angularSpeed = nextRandomInRange(seedState, 0.5F, 1.6F);
+            peg.phase = nextRandomInRange(seedState, 0.0F, TWO_PI);
+
+            // Color de la clavija: rampa fria y poco saturada, de cian en el
+            // vertice a violeta en la base. Las pelotas usan tonos libres y muy
+            // saturados, asi que unas y otras nunca se confunden. Las clavijas
+            // que oscilan se marcan con un tono ambar, que no aparece en la
+            // rampa, para poder seguirlas a simple vista.
+            if (oscillates) {
+                peg.color = hsvToRgb(0.08F, 0.78F, 1.0F);
+            } else {
+                const float hue = 0.49F + 0.10F * t;
+                peg.color = hsvToRgb(hue, 0.62F, 0.98F);
+            }
             pegs_.push_back(peg);
         }
     }
@@ -337,12 +378,16 @@ void Simulation::buildModifiers(std::uint32_t& seedState) {
 
     for (int index = 0; index < count; ++index) {
         Modifier modifier {};
+        // Los modificadores se colocan en coordenadas polares para que queden
+        // repartidos dentro del cilindro y no en las esquinas de una caja.
+        const float angle = nextRandomInRange(seedState, 0.0F, TWO_PI);
+        const float distance = nextRandomInRange(seedState, 0.25F, 0.80F) * params_.boardRadius;
         modifier.center = {
-            nextRandomInRange(seedState, -params_.halfWidth() * 0.8F, params_.halfWidth() * 0.8F),
-            nextRandomInRange(seedState, params_.floorY() * 0.6F, params_.ceilingY() * 0.7F),
-            nextRandomInRange(seedState, -params_.halfDepth() * 0.5F, params_.halfDepth() * 0.5F)
+            std::cos(angle) * distance,
+            nextRandomInRange(seedState, params_.floorY() * 0.55F, params_.ceilingY() * 0.55F),
+            std::sin(angle) * distance
         };
-        modifier.radius = nextRandomInRange(seedState, 0.9F, 1.9F);
+        modifier.radius = nextRandomInRange(seedState, 1.0F, 2.1F);
         modifier.kind = static_cast<ModifierKind>(nextRandomUint(seedState) % 3u);
         switch (modifier.kind) {
             case ModifierKind::GravityWell:
@@ -371,8 +416,14 @@ void Simulation::spawnBall(Ball& ball, std::uint32_t index, std::uint32_t& seedS
     ball.bin = -1;
     ball.active = true;
     respawnAtTop(ball, params_);
-    // En el arranque las pelotas se reparten por toda la altura del tablero
-    // para que la escena se vea poblada desde el primer cuadro.
+    // En el arranque las pelotas se reparten por toda la altura y por todo el
+    // radio, para que la escena se vea poblada desde el primer cuadro en lugar
+    // de arrancar con una sola columna cayendo sobre el vertice.
+    const float angle = nextRandomInRange(ball.seed, 0.0F, TWO_PI);
+    const float distance = params_.usableRadius(ball.radius) *
+                           std::sqrt(nextRandomFloat(ball.seed));
+    ball.position.x = std::cos(angle) * distance;
+    ball.position.z = std::sin(angle) * distance;
     ball.position.y = nextRandomInRange(ball.seed,
                                         params_.floorY() + ball.radius * 3.0F,
                                         params_.ceilingY() - ball.radius);

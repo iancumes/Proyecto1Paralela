@@ -65,7 +65,7 @@ digraph PlinkoParalelo {
         d_ok_n  [shape=diamond, fillcolor="#fdf3e6", color="#eb6834",
                  label="N es entero\nentre 1 y 200000?"];
         reintento [label="Reintentar\n(hasta 3 veces)"];
-        omision [label="Usar valor por omision\nN = 600"];
+        omision [label="Usar valor por omision\nN = 200"];
     }
 
     // ---------------- Validacion ----------------
